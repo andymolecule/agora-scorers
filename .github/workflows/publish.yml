@@ -1,0 +1,78 @@
+name: Publish Scorers
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "gems-*/**"
+      - ".github/workflows/publish.yml"
+      - "scripts/**"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_NAMESPACE: andymolecule
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run scorer regression tests
+        run: bash scripts/run-scorer-tests.sh
+
+      - name: Run container guard
+        run: node scripts/check-scorer-containers.mjs
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+      # Public scorer allowlist — only images registered in the Agora
+      # official-scorer-catalog.ts belong here. Adding an entry makes it
+      # publicly pullable on GHCR. Do not add non-catalog images.
+      matrix:
+        include:
+          - name: gems-match-scorer
+            context: gems-match-scorer
+          - name: gems-tabular-scorer
+            context: gems-tabular-scorer
+          - name: gems-ranking-scorer
+            context: gems-ranking-scorer
+          - name: gems-code-executor
+            context: gems-code-executor
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_PAT || github.token }}
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}:v1
+            ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}:sha-${{ github.sha }}
