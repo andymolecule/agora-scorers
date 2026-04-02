@@ -9,8 +9,8 @@ Supports deterministic exact-match scoring for:
 
 Input:
   /input/agora-runtime.json
-  /input/<evaluation bundle>
-  /input/<submission artifact>
+  /input/evaluation
+  /input/submission
 
 Output:
   /output/score.json
@@ -20,15 +20,19 @@ import csv
 import json
 import math
 import os
+import sys
 from pathlib import Path
+
+SCORER_REPO_ROOT = Path(__file__).resolve().parents[1]
+COMMON_DIR = SCORER_REPO_ROOT / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_contract import load_runtime_contract
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
-RUNTIME_CONFIG_PATH = INPUT_DIR / "agora-runtime.json"
 OUTPUT_PATH = OUTPUT_DIR / "score.json"
-
-DEFAULT_EVALUATION_BUNDLE_NAME = "ground_truth.csv"
-DEFAULT_SUBMISSION_FILE_NAME = "submission.csv"
 
 
 def deterministic_json_write(payload: dict) -> None:
@@ -85,33 +89,11 @@ def resolve_opaque_submission_mode(contract: dict, metric: str) -> str:
 
 
 def load_runtime_config() -> dict:
-    if not RUNTIME_CONFIG_PATH.exists():
-        return {
-            "comparison_kind": "csv_table",
-            "evaluation_path": INPUT_DIR / DEFAULT_EVALUATION_BUNDLE_NAME,
-            "submission_path": INPUT_DIR / DEFAULT_SUBMISSION_FILE_NAME,
-        }
-
-    try:
-        runtime_config = json.loads(RUNTIME_CONFIG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        fail_runtime(
-            f"Invalid runtime config JSON at /input/agora-runtime.json: {error.msg}"
-        )
-
-    if runtime_config.get("version") != "v1":
-        fail_runtime("Unsupported runtime config version. Expected version=v1.")
-
-    mount = runtime_config.get("mount")
-    if not isinstance(mount, dict):
-        fail_runtime("Runtime config mount must be an object.")
-
-    evaluation_bundle_name = mount.get("evaluation_bundle_name")
-    submission_file_name = mount.get("submission_file_name")
-    if not isinstance(evaluation_bundle_name, str) or not evaluation_bundle_name:
-        fail_runtime("Runtime config evaluation_bundle_name must be a non-empty string.")
-    if not isinstance(submission_file_name, str) or not submission_file_name:
-        fail_runtime("Runtime config submission_file_name must be a non-empty string.")
+    runtime_config = load_runtime_contract(
+        input_dir=INPUT_DIR,
+        fail_runtime=fail_runtime,
+        require_evaluation_bundle=True,
+    )
 
     metric = runtime_config.get("metric", "custom")
     submission_contract = runtime_config.get("submission_contract")
@@ -132,8 +114,8 @@ def load_runtime_config() -> dict:
 
     return {
         "comparison_kind": comparison_kind,
-        "evaluation_path": INPUT_DIR / evaluation_bundle_name,
-        "submission_path": INPUT_DIR / submission_file_name,
+        "evaluation_path": runtime_config["evaluation_path"],
+        "submission_path": runtime_config["submission_path"],
     }
 
 

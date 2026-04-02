@@ -6,8 +6,8 @@ bundle and scores by pass rate.
 
 Input:
   /input/agora-runtime.json
-  /input/<evaluation bundle zip>
-  /input/<submission.py>
+  /input/evaluation
+  /input/submission
 
 Output:
   /output/score.json
@@ -21,13 +21,16 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+SCORER_REPO_ROOT = Path(__file__).resolve().parents[1]
+COMMON_DIR = SCORER_REPO_ROOT / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_contract import load_runtime_contract
+
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
-RUNTIME_CONFIG_PATH = INPUT_DIR / "agora-runtime.json"
 OUTPUT_PATH = OUTPUT_DIR / "score.json"
-
-DEFAULT_EVALUATION_BUNDLE_NAME = "evaluation_bundle.zip"
-DEFAULT_SUBMISSION_FILE_NAME = "submission.py"
 DEFAULT_TIMEOUT_MS = 5_000
 MAX_TIMEOUT_MS = 30_000
 MAX_TESTS = 128
@@ -81,33 +84,14 @@ def require_matching_extension(contract: dict, expected_extension: str, key: str
 
 
 def load_runtime_config() -> dict:
-    if not RUNTIME_CONFIG_PATH.exists():
-        fail_runtime("Missing required file: /input/agora-runtime.json")
-
-    try:
-        runtime_config = json.loads(RUNTIME_CONFIG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        fail_runtime(
-            f"Invalid runtime config JSON at /input/agora-runtime.json: {error.msg}"
-        )
-
-    if runtime_config.get("version") != "v1":
-        fail_runtime("Unsupported runtime config version. Expected version=v1.")
-
+    runtime_config = load_runtime_contract(
+        input_dir=INPUT_DIR,
+        fail_runtime=fail_runtime,
+        require_evaluation_bundle=True,
+    )
     metric = runtime_config.get("metric")
     if metric != "pass_rate":
         fail_runtime("Unsupported metric. official_code_execution_v1 requires pass_rate.")
-
-    mount = runtime_config.get("mount")
-    if not isinstance(mount, dict):
-        fail_runtime("Runtime config mount must be an object.")
-
-    evaluation_bundle_name = mount.get("evaluation_bundle_name")
-    submission_file_name = mount.get("submission_file_name")
-    if not isinstance(evaluation_bundle_name, str) or not evaluation_bundle_name:
-        fail_runtime("Runtime config evaluation_bundle_name must be a non-empty string.")
-    if not isinstance(submission_file_name, str) or not submission_file_name:
-        fail_runtime("Runtime config submission_file_name must be a non-empty string.")
 
     evaluation_contract = require_opaque_file_contract(
         runtime_config,
@@ -129,8 +113,8 @@ def load_runtime_config() -> dict:
     )
 
     return {
-        "evaluation_path": INPUT_DIR / evaluation_bundle_name,
-        "submission_path": INPUT_DIR / submission_file_name,
+        "evaluation_path": runtime_config["evaluation_path"],
+        "submission_path": runtime_config["submission_path"],
     }
 
 

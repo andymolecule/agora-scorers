@@ -6,5 +6,6 @@ LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
       org.opencontainers.image.description="Deterministic docking scorer image family for Agora docking presets."
 
 WORKDIR /app
-COPY score.py /app/score.py
-CMD ["python", "/app/score.py"]
+COPY common /app/common
+COPY gems-ranking-scorer /app/gems-ranking-scorer
+CMD ["python", "/app/gems-ranking-scorer/score.py"]

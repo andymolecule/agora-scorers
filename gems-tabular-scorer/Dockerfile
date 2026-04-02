@@ -6,5 +6,6 @@ LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
       org.opencontainers.image.description="Deterministic regression scorer for Agora prediction presets."
 
 WORKDIR /app
-COPY score.py /app/score.py
-CMD ["python", "/app/score.py"]
+COPY common /app/common
+COPY gems-tabular-scorer /app/gems-tabular-scorer
+CMD ["python", "/app/gems-tabular-scorer/score.py"]

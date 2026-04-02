@@ -4,8 +4,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT_DIR / "containers" / "gems-match-scorer" / "score.py"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT_DIR / "gems-match-scorer" / "score.py"
 
 
 def load_scorer_module():
@@ -61,11 +61,11 @@ def run_case(
 
 
 csv_runtime_config = {
-    "version": "v1",
+    "version": "v2",
     "metric": "exact_match",
     "mount": {
-        "evaluation_bundle_name": "ground_truth.csv",
-        "submission_file_name": "submission.csv",
+        "evaluation_bundle_name": "evaluation",
+        "submission_file_name": "submission",
     },
     "submission_contract": {
         "version": "v1",
@@ -95,11 +95,11 @@ assert payload["score"] == 1.0, payload
 assert payload["details"]["comparison_kind"] == "csv_table", payload
 
 json_runtime_config = {
-    "version": "v1",
+    "version": "v2",
     "metric": "exact_match",
     "mount": {
-        "evaluation_bundle_name": "ground_truth.json",
-        "submission_file_name": "submission.json",
+        "evaluation_bundle_name": "evaluation",
+        "submission_file_name": "submission",
     },
     "submission_contract": {
         "version": "v1",
@@ -134,11 +134,11 @@ assert payload["ok"] is True, payload
 assert payload["score"] == 0.0, payload
 
 structured_record_runtime_config = {
-    "version": "v1",
+    "version": "v2",
     "metric": "validation_score",
     "mount": {
-        "evaluation_bundle_name": "ground_truth.json",
-        "submission_file_name": "submission.json",
+        "evaluation_bundle_name": "evaluation",
+        "submission_file_name": "submission",
     },
     "submission_contract": {
         "version": "v1",
@@ -218,11 +218,11 @@ assert "array_required:actions_taken" in payload["details"]["failed_checks"], pa
 assert "allowed_value:severity" in payload["details"]["failed_checks"], payload
 
 opaque_runtime_config = {
-    "version": "v1",
+    "version": "v2",
     "metric": "exact_match",
     "mount": {
-        "evaluation_bundle_name": "ground_truth.bin",
-        "submission_file_name": "submission.bin",
+        "evaluation_bundle_name": "evaluation",
+        "submission_file_name": "submission",
     },
     "submission_contract": {
         "version": "v1",
@@ -253,5 +253,30 @@ exit_code, payload = run_case(
 assert exit_code == 0, f"opaque mismatch run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 0.0, payload
+
+legacy_runtime_config = dict(csv_runtime_config)
+legacy_runtime_config["version"] = "v1"
+exit_code, payload = run_case(
+    legacy_runtime_config,
+    "id,value\nrow-1,1\nrow-2,2\n",
+    "id,value\nrow-1,1\nrow-2,2\n",
+)
+assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "Expected version=v2" in payload["error"], payload
+
+old_mount_runtime_config = dict(csv_runtime_config)
+old_mount_runtime_config["mount"] = {
+    "evaluation_bundle_name": "ground_truth.csv",
+    "submission_file_name": "submission",
+}
+exit_code, payload = run_case(
+    old_mount_runtime_config,
+    "id,value\nrow-1,1\nrow-2,2\n",
+    "id,value\nrow-1,1\nrow-2,2\n",
+)
+assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
 
 print("repro scorer runtime tests passed")

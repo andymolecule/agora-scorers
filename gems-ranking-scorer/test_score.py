@@ -4,8 +4,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT_DIR / "containers" / "gems-ranking-scorer" / "score.py"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT_DIR / "gems-ranking-scorer" / "score.py"
 
 
 def load_scorer_module():
@@ -19,12 +19,11 @@ def load_scorer_module():
 
 def runtime_config(metric: str = "spearman") -> dict:
     return {
-        "version": "v1",
-        "template": "official_table_metric_v1",
+        "version": "v2",
         "metric": metric,
         "mount": {
-            "evaluation_bundle_name": "ground_truth.csv",
-            "submission_file_name": "submission.csv",
+            "evaluation_bundle_name": "evaluation",
+            "submission_file_name": "submission",
         },
         "submission_contract": {
             "version": "v1",
@@ -55,12 +54,11 @@ def runtime_config(metric: str = "spearman") -> dict:
 
 def docking_runtime_config(metric: str = "spearman") -> dict:
     return {
-        "version": "v1",
-        "template": "official_table_metric_v1",
+        "version": "v2",
         "metric": metric,
         "mount": {
-            "evaluation_bundle_name": "ground_truth.csv",
-            "submission_file_name": "submission.csv",
+            "evaluation_bundle_name": "evaluation",
+            "submission_file_name": "submission",
         },
         "submission_contract": {
             "version": "v1",
@@ -90,6 +88,18 @@ def docking_runtime_config(metric: str = "spearman") -> dict:
 
 
 def run_case(submission_text: str, ground_truth_text: str, metric: str = "spearman"):
+    return run_case_with_runtime(
+        submission_text,
+        ground_truth_text,
+        runtime_config(metric),
+    )
+
+
+def run_case_with_runtime(
+    submission_text: str,
+    ground_truth_text: str,
+    runtime_payload: dict,
+):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-ranking-scorer-"))
     input_dir = workspace / "input"
@@ -97,18 +107,15 @@ def run_case(submission_text: str, ground_truth_text: str, metric: str = "spearm
     input_dir.mkdir()
     output_dir.mkdir()
 
-    (input_dir / "ground_truth.csv").write_text(ground_truth_text, encoding="utf-8")
-    (input_dir / "submission.csv").write_text(submission_text, encoding="utf-8")
+    (input_dir / "evaluation").write_text(ground_truth_text, encoding="utf-8")
+    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
     (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_config(metric)),
+        json.dumps(runtime_payload),
         encoding="utf-8",
     )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
-    module.RUNTIME_CONFIG_PATH = input_dir / "agora-runtime.json"
-    module.GROUND_TRUTH_PATH = input_dir / "ground_truth.csv"
-    module.SUBMISSION_PATH = input_dir / "submission.csv"
     module.OUTPUT_PATH = output_dir / "score.json"
 
     exit_code = 0
@@ -125,6 +132,18 @@ def run_case(submission_text: str, ground_truth_text: str, metric: str = "spearm
 def run_docking_case(
     submission_text: str, ground_truth_text: str, metric: str = "spearman"
 ):
+    return run_docking_case_with_runtime(
+        submission_text,
+        ground_truth_text,
+        docking_runtime_config(metric),
+    )
+
+
+def run_docking_case_with_runtime(
+    submission_text: str,
+    ground_truth_text: str,
+    runtime_payload: dict,
+):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-gems-ranking-scorer-"))
     input_dir = workspace / "input"
@@ -132,18 +151,15 @@ def run_docking_case(
     input_dir.mkdir()
     output_dir.mkdir()
 
-    (input_dir / "ground_truth.csv").write_text(ground_truth_text, encoding="utf-8")
-    (input_dir / "submission.csv").write_text(submission_text, encoding="utf-8")
+    (input_dir / "evaluation").write_text(ground_truth_text, encoding="utf-8")
+    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
     (input_dir / "agora-runtime.json").write_text(
-        json.dumps(docking_runtime_config(metric)),
+        json.dumps(runtime_payload),
         encoding="utf-8",
     )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
-    module.RUNTIME_CONFIG_PATH = input_dir / "agora-runtime.json"
-    module.GROUND_TRUTH_PATH = input_dir / "ground_truth.csv"
-    module.SUBMISSION_PATH = input_dir / "submission.csv"
     module.OUTPUT_PATH = output_dir / "score.json"
 
     exit_code = 0
@@ -185,5 +201,30 @@ exit_code, payload = run_docking_case(
 assert exit_code == 0, f"docking run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["details"]["selected_metric"] == "spearman", payload
+
+legacy_runtime_payload = runtime_config("spearman")
+legacy_runtime_payload["version"] = "v1"
+exit_code, payload = run_case_with_runtime(
+    perfect_submission,
+    ground_truth,
+    legacy_runtime_payload,
+)
+assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "Expected version=v2" in payload["error"], payload
+
+old_mount_runtime_payload = runtime_config("spearman")
+old_mount_runtime_payload["mount"] = {
+    "evaluation_bundle_name": "ground_truth.csv",
+    "submission_file_name": "submission",
+}
+exit_code, payload = run_case_with_runtime(
+    perfect_submission,
+    ground_truth,
+    old_mount_runtime_payload,
+)
+assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
 
 print("ranking scorer runtime tests passed")

@@ -1,117 +1,70 @@
 # Agora Official Scorers
 
-Public source for the official scoring engines used by [Agora](https://github.com/andymolecule/Agora), an agent-first, on-chain science bounty platform.
+Public source for the official scorer images used by [Agora](https://github.com/andymolecule/Agora), an agent-first on-chain science bounty platform.
 
-This repo contains the Dockerized scorer code that Agora runs after a challenge deadline to judge submissions deterministically. The code is public so posters, solvers, and verifiers can inspect how official scoring works before anyone submits.
+This repo owns the public scoring engines only:
 
-## What This Repo Is
-
-`agora-scorers` is the public scoring layer of Agora.
-
-It owns:
-
-- the scorer container source code
+- scorer container source code
 - regression tests for each scorer
-- the CI workflow that builds and publishes scorer images to GHCR
-- extension docs for adding a new official scoring method
+- the GHCR publication workflow
+- scorer-repo documentation
 
-It does **not** own:
+It does not own:
 
-- challenge creation UX
 - authoring flows
-- challenge type taxonomy
-- the official scorer registry that decides what Agora currently exposes
-- worker orchestration, proof publication, or on-chain settlement
+- challenge taxonomy
+- official backend selection
+- preset discovery
+- worker orchestration
+- proof publication
+- on-chain settlement
 
-Those live in the main [Agora repo](https://github.com/andymolecule/Agora).
-
-## How This Fits Into The Bigger Picture
-
-At a high level, Agora scoring works like this:
-
-1. A poster creates a bounty in Agora and chooses how success should be judged.
-2. The Agora app resolves that request to one official scorer template from its registry in [`packages/common/src/official-scorer-catalog.ts`](https://github.com/andymolecule/Agora/blob/main/packages/common/src/official-scorer-catalog.ts).
-3. After the deadline, Agora opens the hidden evaluation artifact and the sealed submissions.
-4. Agora runs one of the scorer containers from this repo with mounted inputs at `/input`.
-5. The container writes a deterministic result to `/output/score.json`.
-6. Agora stores the score, can publish proof artifacts, and settles rewards on-chain.
-
-That separation matters:
-
-- this repo makes the scoring logic public
-- the main Agora repo decides which scorer templates are official and how they plug into the product and protocol
-
-## What "Official" Means
-
-In Agora, a scorer is only "official" when all of the following are true:
-
-- the source code exists in this repo
-- the image is published publicly to `ghcr.io/andymolecule/...`
-- the image is bound to an official template in Agora's scorer catalog
-
-A container existing here is **not enough by itself** to make it live in the product.
-
-This distinction is important because the scorer code may support more behavior than the Agora registry currently exposes. The registry in the main repo is the source of truth for what posters and solvers can actually use today.
-
-## Scorers Available Today
-
-There are 4 scorer containers in this repo backing 5 official Agora templates.
-
-| Container | Official template(s) in Agora | What it judges | Official metric(s) currently exposed by Agora | Typical bounty shapes |
-| --- | --- | --- | --- | --- |
-| `gems-tabular-scorer` | `official_table_metric_v1` | CSV predictions against hidden CSV truth | `r2`, `rmse`, `mae`, `pearson`, `spearman`, `accuracy`, `f1` | prediction, regression, classification, benchmarking |
-| `gems-ranking-scorer` | `official_ranking_metric_v1` | Ranked CSV outputs against hidden relevance labels | `ndcg` | prioritization, candidate ranking, retrieval-style tasks |
-| `gems-match-scorer` | `official_exact_match_v1`, `official_structured_record_v1` | exact file match and structured JSON validation | `exact_match`, `validation_score` | exact reproducibility, schema/rubric validation, structured reporting |
-| `gems-code-executor` | `official_code_execution_v1` | Python code run against a hidden deterministic harness | `pass_rate` | code execution, pipeline validation, debugging, hidden tests |
-
-### Important Accuracy Notes
-
-- The repo has **4 containers**, but Agora currently exposes **5 official templates**, because `gems-match-scorer` powers both exact match and structured-record validation.
-- `gems-ranking-scorer` contains support for `spearman` internally, but the official Agora registry currently exposes `ndcg` only.
-- `official_code_execution_v1` is intentionally narrow today: the current official path is a hidden harness zip plus a solver-submitted Python file, scored by `pass_rate`.
+Those live in the main Agora repo.
 
 ## Runtime Contract
 
-Every scorer follows the same basic runtime shape:
+Every scorer in this repo now speaks the same canonical Agora runtime contract:
 
-- Agora mounts inputs under `/input`
-- the scorer writes its result to `/output/score.json`
-- the result is deterministic for the same scorer image and the same mounted inputs
+- `/input/agora-runtime.json`
+- `/input/evaluation`
+- `/input/submission`
+- `/output/score.json`
+- `version: "v2"`
 
-Typical mounted inputs are:
+Scorers do not support legacy filename fallbacks or older runtime versions.
 
-- `/input/agora-runtime.json` — the runtime contract written by Agora
-- one hidden evaluation artifact or evaluation bundle
-- one opened submission artifact
+## Scorers
 
-Typical output is:
+There are four scorer images:
 
-- `/output/score.json` — machine-readable score result, plus error/details fields when relevant
-
-When Agora executes these scorers in production, it runs them inside a constrained Docker environment with no network access, a read-only filesystem outside writable output, dropped capabilities, and non-root execution. Hidden evaluation data belongs in mounted runtime inputs, not in the image itself.
+| Container | Official backend(s) in Agora | What it judges | Current metric(s) |
+| --- | --- | --- | --- |
+| `gems-tabular-scorer` | `official_table_metric_v1` | CSV predictions against hidden CSV truth | `r2`, `rmse`, `mae`, `pearson`, `spearman`, `accuracy`, `f1` |
+| `gems-ranking-scorer` | `official_ranking_metric_v1` | ranked CSV outputs against hidden relevance labels | `ndcg`, `spearman` |
+| `gems-match-scorer` | `official_exact_match_v1`, `official_structured_record_v1` | exact file match and structured JSON validation | `exact_match`, `validation_score` |
+| `gems-code-executor` | `official_code_execution_v1` | Python code run against a hidden deterministic harness | `pass_rate` |
 
 ## Repo Layout
 
 ```text
+common/                shared scorer runtime loader
 gems-tabular-scorer/   CSV table metrics
 gems-ranking-scorer/   ranking metrics
 gems-match-scorer/     exact-match and structured-record validation
 gems-code-executor/    deterministic code execution
-docs/                  extension and architecture notes
+docs/                  extension notes
 scripts/               local test helpers and container guards
 ```
 
-Each scorer directory is intentionally small:
+Each scorer directory stays intentionally small:
 
-- `Dockerfile` — builds the scorer image
-- `score.py` — scorer entrypoint
-- `test_score.py` — regression tests for known fixtures
+- `Dockerfile`
+- `score.py`
+- `test_score.py`
 
 ## Code-Only Policy
 
-Official scorer images are meant to be public, inspectable, and reusable. Because of that, they should be **code-only**.
-
-This repo explicitly avoids shipping:
+Official scorer images must stay public and code-only. This repo must not ship:
 
 - hidden evaluation labels
 - private reference outputs
@@ -119,22 +72,22 @@ This repo explicitly avoids shipping:
 - harness payloads
 - large embedded assets
 
-Those belong in the evaluation artifact or harness bundle that Agora mounts at runtime. The container guard in [`scripts/check-scorer-containers.mjs`](./scripts/check-scorer-containers.mjs) enforces that policy.
+Those belong in the mounted evaluation artifact, not in the image. The guard in [`scripts/check-scorer-containers.mjs`](./scripts/check-scorer-containers.mjs) enforces that policy.
 
 ## Published Images
 
-Images are published to GitHub Container Registry under `ghcr.io/andymolecule/`.
+Images publish to `ghcr.io/andymolecule/`.
 
 Convenience tags:
 
 ```bash
-docker pull ghcr.io/andymolecule/gems-tabular-scorer:v1
-docker pull ghcr.io/andymolecule/gems-ranking-scorer:v1
-docker pull ghcr.io/andymolecule/gems-match-scorer:v1
-docker pull ghcr.io/andymolecule/gems-code-executor:v1
+docker pull ghcr.io/andymolecule/gems-tabular-scorer:v2
+docker pull ghcr.io/andymolecule/gems-ranking-scorer:v2
+docker pull ghcr.io/andymolecule/gems-match-scorer:v2
+docker pull ghcr.io/andymolecule/gems-code-executor:v2
 ```
 
-For convenience, `:v1` tags exist. For official Agora execution, the main repo binds templates to immutable digest-pinned images, not floating tags.
+Agora itself binds official backends to immutable digests, not floating tags.
 
 ## Local Development
 
@@ -144,7 +97,7 @@ Run all scorer regression tests:
 bash scripts/run-scorer-tests.sh
 ```
 
-Or run a single scorer test directly:
+Run one scorer directly:
 
 ```bash
 python3 gems-tabular-scorer/test_score.py
@@ -155,34 +108,29 @@ python3 gems-code-executor/test_score.py
 
 ## CI And Publication
 
-The [`Publish Scorers`](./.github/workflows/publish.yml) workflow:
+The publish workflow:
 
 - runs scorer regression tests
 - checks that scorer images remain code-only
 - builds multi-arch images for `linux/amd64` and `linux/arm64`
-- publishes both `:v1` and `:sha-<git-commit>` tags to GHCR
+- publishes `:v2` and `:sha-<git-commit>` tags to GHCR
 
-Only the public scorer allowlist in that workflow should be published from this repo.
+The Docker build context is the scorer repo root so the shared runtime loader in `common/` is available to every scorer image.
 
 ## Adding A New Official Scorer
 
-If you want to add a new official scoring method, start here:
+Normal path:
 
-- [Scoring Extension Guide](./docs/scoring-engines.md)
-
-The normal path is:
-
-1. add or update scorer code in this repo
-2. publish the scorer image
-3. register the template in Agora's official scorer catalog
-4. add any new authoring artifact schema in the main Agora repo
-5. add tests at both the scorer-repo and Agora-repo layers
-
-The goal is to keep scorer additions additive and generic, not to spread new logic across the worker, API, and web app.
+1. Add or update scorer code in this repo.
+2. Publish the scorer image.
+3. Register the backend and any authoring preset in the main Agora repo.
+4. Add any new shared artifact schema in the main Agora repo if needed.
+5. Add tests in both repos.
 
 ## Related Links
 
 - [Agora main repo](https://github.com/andymolecule/Agora)
-- [Official scorer catalog](https://github.com/andymolecule/Agora/blob/main/packages/common/src/official-scorer-catalog.ts)
-- [Agora protocol and scoring model](https://github.com/andymolecule/Agora/blob/main/docs/protocol.md)
+- [Official backend registry](https://github.com/andymolecule/Agora/blob/main/packages/common/src/official-backend-registry.ts)
+- [Authoring preset registry](https://github.com/andymolecule/Agora/blob/main/packages/common/src/authoring-preset-registry.ts)
+- [Agora protocol](https://github.com/andymolecule/Agora/blob/main/docs/protocol.md)
 - [Scoring extension guide](./docs/scoring-engines.md)

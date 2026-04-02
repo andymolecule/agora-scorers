@@ -4,9 +4,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-FIXTURE_DIR = ROOT_DIR / "tests" / "fixtures" / "lifecycle" / "prediction"
-MODULE_PATH = ROOT_DIR / "containers" / "gems-tabular-scorer" / "score.py"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT_DIR / "gems-tabular-scorer" / "score.py"
 
 
 def load_scorer_module():
@@ -20,12 +19,11 @@ def load_scorer_module():
 
 def runtime_config(id_column: str, value_column: str, metric: str = "r2") -> dict:
     return {
-        "version": "v1",
-        "template": "official_table_metric_v1",
+        "version": "v2",
         "metric": metric,
         "mount": {
-            "evaluation_bundle_name": "ground_truth.csv",
-            "submission_file_name": "submission.csv",
+            "evaluation_bundle_name": "evaluation",
+            "submission_file_name": "submission",
         },
         "submission_contract": {
             "version": "v1",
@@ -60,6 +58,7 @@ def run_case(
     value_column: str = "prediction",
     metric: str = "r2",
     ground_truth_text: str | None = None,
+    runtime_payload: dict | None = None,
 ):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-gems-tabular-scorer-"))
@@ -68,24 +67,20 @@ def run_case(
     input_dir.mkdir()
     output_dir.mkdir()
 
-    if ground_truth_text is None:
-        shutil.copy(FIXTURE_DIR / "hidden_labels.csv", input_dir / "ground_truth.csv")
-    else:
-        (input_dir / "ground_truth.csv").write_text(
-            ground_truth_text,
-            encoding="utf-8",
-        )
-    (input_dir / "submission.csv").write_text(submission_text, encoding="utf-8")
+    (input_dir / "evaluation").write_text(
+        ground_truth_text
+        if ground_truth_text is not None
+        else "id,label\ns1,10.0\ns2,11.2\ns3,9.8\ns4,12.3\ns5,13.1\ns6,8.4\ns7,7.7\ns8,15.2\ns9,10.5\ns10,9.1\n",
+        encoding="utf-8",
+    )
+    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
     (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_config(id_column, value_column, metric)),
+        json.dumps(runtime_payload or runtime_config(id_column, value_column, metric)),
         encoding="utf-8",
     )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
-    module.RUNTIME_CONFIG_PATH = input_dir / "agora-runtime.json"
-    module.GROUND_TRUTH_PATH = input_dir / "ground_truth.csv"
-    module.SUBMISSION_PATH = input_dir / "submission.csv"
     module.OUTPUT_PATH = output_dir / "score.json"
 
     exit_code = 0
@@ -99,8 +94,30 @@ def run_case(
     return exit_code, payload
 
 
-sample_submission = (FIXTURE_DIR / "sample_submission.csv").read_text(encoding="utf-8")
-ground_truth = (FIXTURE_DIR / "hidden_labels.csv").read_text(encoding="utf-8")
+sample_submission = """id,prediction
+s1,10.0
+s2,11.2
+s3,9.8
+s4,12.3
+s5,13.1
+s6,8.4
+s7,7.7
+s8,15.2
+s9,10.5
+s10,9.1
+"""
+ground_truth = """id,label
+s1,10.0
+s2,11.2
+s3,9.8
+s4,12.3
+s5,13.1
+s6,8.4
+s7,7.7
+s8,15.2
+s9,10.5
+s10,9.1
+"""
 custom_submission = sample_submission.replace("id,prediction", "sample_id,forecast")
 exit_code, payload = run_case(custom_submission, "sample_id", "forecast")
 assert exit_code == 0, f"custom column run should not crash: {exit_code}"
@@ -148,5 +165,28 @@ exit_code, payload = run_case(
 assert exit_code == 0, f"classification run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["details"]["accuracy"] == round(2 / 3, 12), payload
+
+legacy_runtime_payload = runtime_config("id", "prediction", "r2")
+legacy_runtime_payload["version"] = "v1"
+exit_code, payload = run_case(
+    sample_submission,
+    runtime_payload=legacy_runtime_payload,
+)
+assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "Expected version=v2" in payload["error"], payload
+
+old_mount_runtime_payload = runtime_config("id", "prediction", "r2")
+old_mount_runtime_payload["mount"] = {
+    "evaluation_bundle_name": "ground_truth.csv",
+    "submission_file_name": "submission",
+}
+exit_code, payload = run_case(
+    sample_submission,
+    runtime_payload=old_mount_runtime_payload,
+)
+assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
 
 print("regression scorer runtime tests passed")

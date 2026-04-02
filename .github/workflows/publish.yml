@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - "common/**"
       - "gems-*/**"
       - ".github/workflows/publish.yml"
       - "scripts/**"
@@ -36,18 +37,18 @@ jobs:
     strategy:
       fail-fast: false
       # Public scorer allowlist — only images registered in the Agora
-      # official-scorer-catalog.ts belong here. Adding an entry makes it
+      # official backend registry belong here. Adding an entry makes it
       # publicly pullable on GHCR. Do not add non-catalog images.
       matrix:
         include:
           - name: gems-match-scorer
-            context: gems-match-scorer
+            dockerfile: gems-match-scorer/Dockerfile
           - name: gems-tabular-scorer
-            context: gems-tabular-scorer
+            dockerfile: gems-tabular-scorer/Dockerfile
           - name: gems-ranking-scorer
-            context: gems-ranking-scorer
+            dockerfile: gems-ranking-scorer/Dockerfile
           - name: gems-code-executor
-            context: gems-code-executor
+            dockerfile: gems-code-executor/Dockerfile
 
     steps:
       - name: Checkout
@@ -69,10 +70,10 @@ jobs:
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}:v1
+            ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}:v2
             ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}:sha-${{ github.sha }}

@@ -6,5 +6,6 @@ LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
       org.opencontainers.image.description="Deterministic exact-match scorer for CSV and JSON reproducibility-style presets."
 
 WORKDIR /app
-COPY score.py /app/score.py
-CMD ["python", "/app/score.py"]
+COPY common /app/common
+COPY gems-match-scorer /app/gems-match-scorer
+CMD ["python", "/app/gems-match-scorer/score.py"]

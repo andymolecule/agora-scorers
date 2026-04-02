@@ -6,5 +6,6 @@ LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
       org.opencontainers.image.description="Deterministic Python code execution scorer for Agora pass-rate challenges."
 
 WORKDIR /app
-COPY score.py /app/score.py
-CMD ["python", "/app/score.py"]
+COPY common /app/common
+COPY gems-code-executor /app/gems-code-executor
+CMD ["python", "/app/gems-code-executor/score.py"]

@@ -5,8 +5,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT_DIR / "containers" / "gems-code-executor" / "score.py"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT_DIR / "gems-code-executor" / "score.py"
 
 
 def load_executor_module():
@@ -60,11 +60,11 @@ def run_case(runtime_config: dict, harness_manifest: dict, harness_files: dict[s
 
 
 runtime_config = {
-    "version": "v1",
+    "version": "v2",
     "metric": "pass_rate",
     "mount": {
-        "evaluation_bundle_name": "evaluation_bundle.zip",
-        "submission_file_name": "submission.py",
+        "evaluation_bundle_name": "evaluation",
+        "submission_file_name": "submission",
     },
     "submission_contract": {
         "version": "v1",
@@ -184,3 +184,30 @@ exit_code, payload = run_case(
 assert exit_code == 1, f"path-escape harness should fail runtime: {exit_code}"
 assert payload["ok"] is False, payload
 assert "must not escape the harness root" in payload["error"], payload
+
+legacy_runtime_config = dict(runtime_config)
+legacy_runtime_config["version"] = "v1"
+exit_code, payload = run_case(
+    legacy_runtime_config,
+    harness_manifest,
+    harness_files,
+    passing_submission,
+)
+assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "Expected version=v2" in payload["error"], payload
+
+old_mount_runtime_config = dict(runtime_config)
+old_mount_runtime_config["mount"] = {
+    "evaluation_bundle_name": "evaluation_bundle.zip",
+    "submission_file_name": "submission",
+}
+exit_code, payload = run_case(
+    old_mount_runtime_config,
+    harness_manifest,
+    harness_files,
+    passing_submission,
+)
+assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "evaluation_bundle_name must be evaluation" in payload["error"], payload

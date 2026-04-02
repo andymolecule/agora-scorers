@@ -6,8 +6,8 @@ mounted by the orchestrator at /input/agora-runtime.json.
 
 Input:
   /input/agora-runtime.json
-  /input/ground_truth.csv
-  /input/submission.csv
+  /input/evaluation
+  /input/submission
 
 Output:
   /output/score.json
@@ -15,38 +15,22 @@ Output:
 
 import json
 import math
+import sys
 from pathlib import Path
+
+SCORER_REPO_ROOT = Path(__file__).resolve().parents[1]
+COMMON_DIR = SCORER_REPO_ROOT / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_contract import load_runtime_contract
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
-RUNTIME_CONFIG_PATH = INPUT_DIR / "agora-runtime.json"
-GROUND_TRUTH_PATH = INPUT_DIR / "ground_truth.csv"
-SUBMISSION_PATH = INPUT_DIR / "submission.csv"
 OUTPUT_PATH = OUTPUT_DIR / "score.json"
 
 NUMERIC_METRICS = {"r2", "rmse", "mae", "pearson", "spearman"}
 CLASSIFICATION_METRICS = {"accuracy", "f1"}
-
-LEGACY_RUNTIME_CONFIG = {
-    "metric": "r2",
-    "submission": {
-        "required": ["id", "prediction"],
-        "id": "id",
-        "value": "prediction",
-        "allow_extra": True,
-    },
-    "evaluation": {
-        "required": ["id", "label"],
-        "id": "id",
-        "value": "label",
-        "allow_extra": True,
-    },
-    "policies": {
-        "coverage_policy": "ignore",
-        "duplicate_id_policy": "ignore",
-        "invalid_value_policy": "ignore",
-    },
-}
 
 
 def write_result(payload: dict) -> None:
@@ -127,56 +111,18 @@ def require_csv_contract(runtime_config: dict, key: str) -> dict:
 
 
 def load_runtime_config() -> dict:
-    if not RUNTIME_CONFIG_PATH.exists():
-        return LEGACY_RUNTIME_CONFIG
-
-    try:
-        runtime_config = json.loads(RUNTIME_CONFIG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        fail_runtime(
-            f"Invalid runtime config JSON at /input/agora-runtime.json: {error.msg}"
-        )
-
-    if runtime_config.get("version") != "v1":
-        fail_runtime("Unsupported runtime config version. Expected version=v1.")
-
-    policies = runtime_config.get("policies", {})
-    if not isinstance(policies, dict):
-        fail_runtime("Runtime config policies must be an object.")
-
-    coverage_policy = policies.get("coverage_policy", "ignore")
-    duplicate_id_policy = policies.get("duplicate_id_policy", "ignore")
-    invalid_value_policy = policies.get("invalid_value_policy", "ignore")
-    if coverage_policy not in ("reject", "ignore", "penalize"):
-        fail_runtime("Unsupported coverage_policy in runtime config.")
-    if duplicate_id_policy not in ("reject", "ignore"):
-        fail_runtime("Unsupported duplicate_id_policy in runtime config.")
-    if invalid_value_policy not in ("reject", "ignore"):
-        fail_runtime("Unsupported invalid_value_policy in runtime config.")
-
-    mount = runtime_config.get("mount")
-    if not isinstance(mount, dict):
-        fail_runtime("Runtime config mount must be an object.")
-    submission_file_name = mount.get("submission_file_name")
-    evaluation_bundle_name = mount.get("evaluation_bundle_name")
-    if submission_file_name != SUBMISSION_PATH.name:
-        fail_runtime(
-            f"Runtime config submission_file_name must be {SUBMISSION_PATH.name}."
-        )
-    if evaluation_bundle_name != GROUND_TRUTH_PATH.name:
-        fail_runtime(
-            f"Runtime config evaluation_bundle_name must be {GROUND_TRUTH_PATH.name}."
-        )
-
+    runtime_config = load_runtime_contract(
+        input_dir=INPUT_DIR,
+        fail_runtime=fail_runtime,
+        require_evaluation_bundle=True,
+    )
     return {
         "metric": runtime_config.get("metric"),
         "submission": require_csv_contract(runtime_config, "submission_contract"),
         "evaluation": require_csv_contract(runtime_config, "evaluation_contract"),
-        "policies": {
-            "coverage_policy": coverage_policy,
-            "duplicate_id_policy": duplicate_id_policy,
-            "invalid_value_policy": invalid_value_policy,
-        },
+        "policies": runtime_config["policies"],
+        "evaluation_path": runtime_config["evaluation_path"],
+        "submission_path": runtime_config["submission_path"],
     }
 
 
@@ -240,19 +186,21 @@ def build_truth_map(
     for row in truth_rows:
         row_id = row.get(id_col, "")
         if not row_id:
-            fail_runtime("ground_truth.csv contains an empty evaluation id.")
+            fail_runtime("Evaluation bundle contains an empty evaluation id.")
         if row_id in truth_map:
-            fail_runtime("ground_truth.csv contains duplicate evaluation ids.")
+            fail_runtime("Evaluation bundle contains duplicate evaluation ids.")
 
         raw_value = row.get(value_col, "")
         if not raw_value:
-            fail_runtime("ground_truth.csv contains an empty target value.")
+            fail_runtime("Evaluation bundle contains an empty target value.")
 
         if numeric_values:
             try:
                 truth_value: float | str = float(raw_value)
             except ValueError:
-                fail_runtime("ground_truth.csv contains a non-numeric target value.")
+                fail_runtime(
+                    "Evaluation bundle contains a non-numeric target value."
+                )
         else:
             truth_value = str(raw_value)
 
@@ -429,24 +377,27 @@ def main() -> None:
             f"Unsupported metric {metric}. Next step: choose one of {','.join(sorted(NUMERIC_METRICS | CLASSIFICATION_METRICS))}."
         )
 
-    if not GROUND_TRUTH_PATH.exists():
-        fail_runtime("Missing required file: /input/ground_truth.csv")
-    if not SUBMISSION_PATH.exists():
-        fail_runtime("Missing required file: /input/submission.csv")
+    evaluation_path = runtime_config["evaluation_path"]
+    submission_path = runtime_config["submission_path"]
 
-    truth_rows = parse_csv(GROUND_TRUTH_PATH)
-    sub_rows = parse_csv(SUBMISSION_PATH)
+    if not evaluation_path.exists():
+        fail_runtime(f"Missing required file: {evaluation_path}")
+    if not submission_path.exists():
+        fail_runtime(f"Missing required file: {submission_path}")
+
+    truth_rows = parse_csv(evaluation_path)
+    sub_rows = parse_csv(submission_path)
 
     validate_header(
         truth_rows,
         runtime_config["evaluation"],
-        "ground_truth.csv",
+        "Evaluation bundle",
         runtime_error=True,
     )
     validate_header(
         sub_rows,
         runtime_config["submission"],
-        "submission.csv",
+        "Submission",
         runtime_error=False,
     )
 
