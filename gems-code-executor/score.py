@@ -5,9 +5,9 @@ Runs a solver-submitted Python script against a hidden deterministic harness
 bundle and scores by pass rate.
 
 Input:
-  /input/agora-runtime.json
-  /input/evaluation
-  /input/submission
+  /input/runtime-manifest.json
+  /input/evaluation/<role>/<filename>
+  /input/submission/<role>/<filename>
 
 Output:
   /output/score.json
@@ -26,7 +26,11 @@ COMMON_DIR = SCORER_REPO_ROOT / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from runtime_contract import load_runtime_contract
+from runtime_contract import (
+    load_runtime_manifest,
+    require_relation,
+    resolve_runtime_artifact,
+)
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
@@ -58,63 +62,82 @@ def normalize_file_extension(value: str | None) -> str | None:
     return trimmed if trimmed.startswith(".") else f".{trimmed}"
 
 
-def require_opaque_file_contract(runtime_config: dict, key: str) -> dict:
-    contract = runtime_config.get(key)
-    if not isinstance(contract, dict):
-        fail_runtime(f"Missing required runtime contract: {key}.")
-    if contract.get("kind") != "opaque_file":
-        fail_runtime(f"Runtime contract {key} must be kind=opaque_file.")
+def require_file_slot(
+    slot: dict,
+    slot_label: str,
+    *,
+    expected_extension: str,
+    expected_validator_kind: str,
+) -> None:
+    validator = slot.get("validator")
+    if not isinstance(validator, dict):
+        fail_runtime(f"Runtime manifest slot {slot_label} is missing validator.")
+    if validator.get("kind") != expected_validator_kind:
+        fail_runtime(
+            f"Runtime manifest slot {slot_label} must use validator.kind={expected_validator_kind}."
+        )
 
-    file_contract = contract.get("file")
+    file_contract = slot.get("file")
     if not isinstance(file_contract, dict):
-        fail_runtime(f"Runtime contract {key} is missing file metadata.")
+        fail_runtime(f"Runtime manifest slot {slot_label} is missing file metadata.")
 
-    return {
-        "extension": normalize_file_extension(file_contract.get("extension")),
-        "mime": file_contract.get("mime"),
-    }
-
-
-def require_matching_extension(contract: dict, expected_extension: str, key: str) -> None:
-    extension = contract.get("extension")
+    extension = normalize_file_extension(file_contract.get("extension"))
     if extension != expected_extension:
         fail_runtime(
-            f"Runtime contract {key} must declare extension {expected_extension}."
+            f"Runtime manifest slot {slot_label} must declare extension {expected_extension}."
         )
 
 
 def load_runtime_config() -> dict:
-    runtime_config = load_runtime_contract(
+    runtime_manifest = load_runtime_manifest(
         input_dir=INPUT_DIR,
         fail_runtime=fail_runtime,
-        require_evaluation_bundle=True,
     )
-    metric = runtime_config.get("metric")
+    metric = runtime_manifest.get("metric")
     if metric != "pass_rate":
         fail_runtime("Unsupported metric. official_code_execution_v1 requires pass_rate.")
+    require_relation(
+        runtime_manifest,
+        kind="execute_against",
+        harness_role="harness",
+        solution_role="solution",
+        fail_runtime=fail_runtime,
+    )
+    evaluation_artifact = resolve_runtime_artifact(
+        runtime_manifest,
+        lane="evaluation",
+        role="harness",
+        fail_runtime=fail_runtime,
+    )
+    submission_artifact = resolve_runtime_artifact(
+        runtime_manifest,
+        lane="submission",
+        role="solution",
+        fail_runtime=fail_runtime,
+    )
+    require_file_slot(
+        evaluation_artifact["slot"],
+        "evaluation.harness",
+        expected_extension=".zip",
+        expected_validator_kind="archive_layout",
+    )
+    require_file_slot(
+        submission_artifact["slot"],
+        "submission.solution",
+        expected_extension=".py",
+        expected_validator_kind="none",
+    )
 
-    evaluation_contract = require_opaque_file_contract(
-        runtime_config,
-        "evaluation_contract",
-    )
-    submission_contract = require_opaque_file_contract(
-        runtime_config,
-        "submission_contract",
-    )
-    require_matching_extension(
-        evaluation_contract,
-        ".zip",
-        "evaluation_contract",
-    )
-    require_matching_extension(
-        submission_contract,
-        ".py",
-        "submission_contract",
-    )
+    evaluation_path = evaluation_artifact["path"]
+    submission_path = submission_artifact["path"]
+    if evaluation_path is None:
+        fail_runtime("Missing required evaluation artifact role harness.")
+    if submission_path is None:
+        fail_runtime("Missing required submission artifact role solution.")
 
     return {
-        "evaluation_path": runtime_config["evaluation_path"],
-        "submission_path": runtime_config["submission_path"],
+        "evaluation_path": evaluation_path,
+        "submission_path": submission_path,
     }
 
 

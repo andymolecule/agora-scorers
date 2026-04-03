@@ -1,13 +1,13 @@
 """
 Agora Tabular Scorer
 
-Scores a CSV submission against a CSV evaluation bundle using a runtime config
-mounted by the orchestrator at /input/agora-runtime.json.
+Scores a CSV submission against a CSV evaluation artifact using the canonical
+Agora runtime manifest mounted at /input/runtime-manifest.json.
 
 Input:
-  /input/agora-runtime.json
-  /input/evaluation
-  /input/submission
+  /input/runtime-manifest.json
+  /input/evaluation/<role>/<filename>
+  /input/submission/<role>/<filename>
 
 Output:
   /output/score.json
@@ -23,7 +23,11 @@ COMMON_DIR = SCORER_REPO_ROOT / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from runtime_contract import load_runtime_contract
+from runtime_contract import (
+    load_runtime_manifest,
+    require_relation,
+    resolve_runtime_artifact,
+)
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
@@ -70,37 +74,35 @@ def parse_csv(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def require_csv_contract(runtime_config: dict, key: str) -> dict:
-    contract = runtime_config.get(key)
-    if not isinstance(contract, dict):
-        fail_runtime(f"Missing required runtime contract: {key}.")
-    if contract.get("kind") != "csv_table":
-        fail_runtime(f"Runtime contract {key} must be kind=csv_table.")
+def require_csv_slot(slot: dict, slot_label: str) -> dict:
+    validator = slot.get("validator")
+    if not isinstance(validator, dict):
+        fail_runtime(f"Runtime manifest slot {slot_label} is missing validator.")
+    if validator.get("kind") != "csv_columns":
+        fail_runtime(
+            f"Runtime manifest slot {slot_label} must use validator.kind=csv_columns."
+        )
 
-    columns = contract.get("columns")
-    if not isinstance(columns, dict):
-        fail_runtime(f"Runtime contract {key} is missing columns.")
-
-    required = columns.get("required")
-    id_col = columns.get("id")
-    value_col = columns.get("value")
+    required = validator.get("required")
+    id_col = validator.get("record_key")
+    value_col = validator.get("value_field")
     if (
         not isinstance(required, list)
         or not required
         or not all(isinstance(col, str) and col for col in required)
     ):
-        fail_runtime(f"Runtime contract {key} must declare required columns.")
+        fail_runtime(f"Runtime manifest slot {slot_label} must declare required columns.")
     if not isinstance(id_col, str) or not id_col:
-        fail_runtime(f"Runtime contract {key} must declare columns.id.")
+        fail_runtime(f"Runtime manifest slot {slot_label} must declare validator.record_key.")
     if not isinstance(value_col, str) or not value_col:
-        fail_runtime(f"Runtime contract {key} must declare columns.value.")
+        fail_runtime(f"Runtime manifest slot {slot_label} must declare validator.value_field.")
     if id_col not in required or value_col not in required:
         fail_runtime(
-            f"Runtime contract {key} must include columns.id and columns.value in columns.required."
+            f"Runtime manifest slot {slot_label} must include validator.record_key and validator.value_field in validator.required."
         )
-    allow_extra = columns.get("allow_extra", True)
+    allow_extra = validator.get("allow_extra", True)
     if not isinstance(allow_extra, bool):
-        fail_runtime(f"Runtime contract {key} must use a boolean allow_extra.")
+        fail_runtime(f"Runtime manifest slot {slot_label} must use a boolean allow_extra.")
 
     return {
         "required": required,
@@ -111,18 +113,36 @@ def require_csv_contract(runtime_config: dict, key: str) -> dict:
 
 
 def load_runtime_config() -> dict:
-    runtime_config = load_runtime_contract(
+    runtime_manifest = load_runtime_manifest(
         input_dir=INPUT_DIR,
         fail_runtime=fail_runtime,
-        require_evaluation_bundle=True,
+    )
+    require_relation(
+        runtime_manifest,
+        kind="tabular_alignment",
+        evaluation_role="reference",
+        submission_role="predictions",
+        fail_runtime=fail_runtime,
+    )
+    evaluation_artifact = resolve_runtime_artifact(
+        runtime_manifest,
+        lane="evaluation",
+        role="reference",
+        fail_runtime=fail_runtime,
+    )
+    submission_artifact = resolve_runtime_artifact(
+        runtime_manifest,
+        lane="submission",
+        role="predictions",
+        fail_runtime=fail_runtime,
     )
     return {
-        "metric": runtime_config.get("metric"),
-        "submission": require_csv_contract(runtime_config, "submission_contract"),
-        "evaluation": require_csv_contract(runtime_config, "evaluation_contract"),
-        "policies": runtime_config["policies"],
-        "evaluation_path": runtime_config["evaluation_path"],
-        "submission_path": runtime_config["submission_path"],
+        "metric": runtime_manifest.get("metric"),
+        "submission": require_csv_slot(submission_artifact["slot"], "submission.predictions"),
+        "evaluation": require_csv_slot(evaluation_artifact["slot"], "evaluation.reference"),
+        "policies": runtime_manifest["policies"],
+        "evaluation_path": evaluation_artifact["path"],
+        "submission_path": submission_artifact["path"],
     }
 
 
@@ -212,13 +232,13 @@ def build_truth_map(
 
 def summarize_submission(
     sub_rows: list[dict[str, str]],
-    submission_contract: dict,
+    submission_csv_contract: dict,
     truth_map: dict[str, float | str],
     policies: dict,
     numeric_values: bool,
 ) -> tuple[dict[str, float | str], dict]:
-    id_col = submission_contract["id"]
-    value_col = submission_contract["value"]
+    id_col = submission_csv_contract["id"]
+    value_col = submission_csv_contract["value"]
 
     valid_predictions: dict[str, float | str] = {}
     seen_ids: set[str] = set()

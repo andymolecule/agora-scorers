@@ -7,11 +7,10 @@ worker, API, and web app.
 
 This repo targets one canonical scorer runtime contract only:
 
-- `/input/agora-runtime.json`
-- `/input/evaluation`
-- `/input/submission`
+- `/input/runtime-manifest.json`
+- `/input/evaluation/<role>/<filename>`
+- `/input/submission/<role>/<filename>`
 - `/output/score.json`
-- `version: "v2"`
 
 ## Boundary
 
@@ -24,7 +23,7 @@ Agora scoring stays clean when these responsibilities remain separate:
 3. `packages/common/src/authoring-artifact-schemas.ts`
    - owns machine-readable uploaded artifact schemas
 4. `packages/scorer/src/pipeline.ts`
-   - stages files, writes `agora-runtime.json`, runs Docker
+   - stages files, writes `runtime-manifest.json`, runs Docker
 
 This scorer repo should only implement the public scorer code and its local
 tests. It should not assume product routing or authoring behavior beyond the
@@ -38,9 +37,9 @@ Shared scorer-side runtime loader.
 
 It owns:
 
-- parsing `/input/agora-runtime.json`
-- requiring `version == "v2"`
-- enforcing canonical mount names
+- parsing `/input/runtime-manifest.json`
+- resolving relation declarations
+- resolving role-bound staged artifact paths
 - normalizing policy defaults
 
 If the runtime contract changes, update this file first and port all scorers in
@@ -62,9 +61,9 @@ runtime loader as the one scorer-side protocol owner.
 
 Each scorer test file should prove:
 
-- canonical `v2` runtime succeeds
-- old runtime versions fail loudly
-- old mount names fail loudly
+- canonical runtime manifest succeeds
+- invalid runtime manifest kind fails loudly
+- missing required scorer relation fails loudly
 
 These are protocol regression tests, not dataset fixtures.
 
@@ -87,6 +86,6 @@ These are protocol regression tests, not dataset fixtures.
 
 ## Release Rule
 
-If the runtime contract changes, cut straight to the new version and roll the
+If the runtime contract changes, cut straight to the new contract and roll the
 official backend digests forward with the new scorer images. Do not keep
 parallel runtime protocols unless there is an explicit migration requirement.

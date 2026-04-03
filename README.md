@@ -25,13 +25,12 @@ Those live in the main Agora repo.
 
 Every scorer in this repo now speaks the same canonical Agora runtime contract:
 
-- `/input/agora-runtime.json`
-- `/input/evaluation`
-- `/input/submission`
+- `/input/runtime-manifest.json`
+- `/input/evaluation/<role>/<filename>`
+- `/input/submission/<role>/<filename>`
 - `/output/score.json`
-- `version: "v2"`
 
-Scorers do not support legacy filename fallbacks or older runtime versions.
+Scorers do not support retired runtime layouts or compatibility shims.
 
 ## Scorers
 
@@ -81,10 +80,10 @@ Images publish to `ghcr.io/andymolecule/`.
 Convenience tags:
 
 ```bash
-docker pull ghcr.io/andymolecule/gems-tabular-scorer:v2
-docker pull ghcr.io/andymolecule/gems-ranking-scorer:v2
-docker pull ghcr.io/andymolecule/gems-match-scorer:v2
-docker pull ghcr.io/andymolecule/gems-code-executor:v2
+docker pull ghcr.io/andymolecule/gems-tabular-scorer:latest
+docker pull ghcr.io/andymolecule/gems-ranking-scorer:latest
+docker pull ghcr.io/andymolecule/gems-match-scorer:latest
+docker pull ghcr.io/andymolecule/gems-code-executor:latest
 ```
 
 Agora itself binds official backends to immutable digests, not floating tags.
@@ -113,7 +112,7 @@ The publish workflow:
 - runs scorer regression tests
 - checks that scorer images remain code-only
 - builds multi-arch images for `linux/amd64` and `linux/arm64`
-- publishes `:v2` and `:sha-<git-commit>` tags to GHCR
+- publishes `:latest` and `:sha-<git-commit>` tags to GHCR
 
 The Docker build context is the scorer repo root so the shared runtime loader in `common/` is available to every scorer image.
 

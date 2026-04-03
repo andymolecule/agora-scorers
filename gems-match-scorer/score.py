@@ -2,15 +2,15 @@
 Agora Exact-Match Scorer
 
 Supports deterministic exact-match scoring for:
-  - csv_table submissions compared against a reference CSV
-  - json_file submissions compared against a reference JSON document
-  - json_file submissions validated against a hidden structured-record rubric
-  - opaque_file submissions compared byte-for-byte against a reference artifact
+  - CSV answer artifacts compared against a reference CSV
+  - JSON answer artifacts compared against a reference JSON document
+  - structured JSON records validated against a hidden structured-record rubric
+  - arbitrary file artifacts compared byte-for-byte against a reference artifact
 
 Input:
-  /input/agora-runtime.json
-  /input/evaluation
-  /input/submission
+  /input/runtime-manifest.json
+  /input/evaluation/<role>/<filename>
+  /input/submission/<role>/<filename>
 
 Output:
   /output/score.json
@@ -28,7 +28,12 @@ COMMON_DIR = SCORER_REPO_ROOT / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from runtime_contract import load_runtime_contract
+from runtime_contract import (
+    find_relation,
+    load_runtime_manifest,
+    require_relation,
+    resolve_runtime_artifact,
+)
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
@@ -58,64 +63,125 @@ def reject_submission(message: str, details: dict | None = None) -> None:
     raise SystemExit(0)
 
 
-def require_csv_submission_contract(contract: dict) -> None:
-    columns = contract.get("columns")
-    if not isinstance(columns, dict):
-        fail_runtime("CSV submission contract is missing columns.")
-    required = columns.get("required")
+def require_csv_slot(slot: dict, slot_label: str) -> None:
+    validator = slot.get("validator")
+    if not isinstance(validator, dict):
+        fail_runtime(f"Runtime manifest slot {slot_label} is missing validator.")
+    if validator.get("kind") != "csv_columns":
+        fail_runtime(
+            f"Runtime manifest slot {slot_label} must use validator.kind=csv_columns."
+        )
+    required = validator.get("required")
     if (
         not isinstance(required, list)
         or not required
         or not all(isinstance(column, str) and column for column in required)
     ):
-        fail_runtime("CSV submission contract must declare required columns.")
+        fail_runtime(
+            f"Runtime manifest slot {slot_label} must declare validator.required."
+        )
 
 
-def resolve_json_submission_mode(metric: str) -> str:
-    if metric == "validation_score":
-        return "json_record"
-    return "json_file"
+def resolve_exact_match_mode(evaluation_slot: dict, submission_slot: dict) -> str:
+    evaluation_kind = evaluation_slot.get("validator", {}).get("kind")
+    submission_kind = submission_slot.get("validator", {}).get("kind")
+    if evaluation_kind != submission_kind:
+        fail_runtime(
+            "Runtime manifest exact_match roles must use matching validator kinds."
+        )
 
+    if evaluation_kind == "csv_columns":
+        require_csv_slot(evaluation_slot, "evaluation.reference")
+        require_csv_slot(submission_slot, "submission.answer")
+        return "csv_exact_match"
 
-def resolve_opaque_submission_mode(contract: dict, metric: str) -> str:
-    file_contract = contract.get("file")
-    if not isinstance(file_contract, dict):
-        fail_runtime("Opaque submission contract is missing file metadata.")
-    extension = file_contract.get("extension")
-    mime = file_contract.get("mime")
-    if extension == ".json" or mime == "application/json":
-        return resolve_json_submission_mode(metric)
-    return "opaque_file"
+    if evaluation_kind in {"json_document", "json_schema"}:
+        return "json_exact_match"
+
+    if evaluation_kind == "none":
+        return "byte_exact_match"
+
+    fail_runtime(
+        "official exact-match scorer supports csv_columns, json_document/json_schema, and none validators only."
+    )
 
 
 def load_runtime_config() -> dict:
-    runtime_config = load_runtime_contract(
+    runtime_manifest = load_runtime_manifest(
         input_dir=INPUT_DIR,
         fail_runtime=fail_runtime,
-        require_evaluation_bundle=True,
+    )
+    metric = runtime_manifest.get("metric", "custom")
+
+    structured_relation = find_relation(
+        runtime_manifest,
+        kind="structured_validation",
+        evaluation_role="rubric",
+        submission_role="record",
+    )
+    exact_match_relation = None if structured_relation else find_relation(
+        runtime_manifest,
+        kind="exact_match",
+        evaluation_role="reference",
+        submission_role="answer",
     )
 
-    metric = runtime_config.get("metric", "custom")
-    submission_contract = runtime_config.get("submission_contract")
-    if not isinstance(submission_contract, dict):
-        fail_runtime("Runtime config submission_contract must be an object.")
-
-    comparison_kind = submission_contract.get("kind")
-    if comparison_kind == "csv_table":
-        require_csv_submission_contract(submission_contract)
-    elif comparison_kind == "json_file":
-        comparison_kind = resolve_json_submission_mode(metric)
-    elif comparison_kind == "opaque_file":
-        comparison_kind = resolve_opaque_submission_mode(submission_contract, metric)
+    if structured_relation is not None:
+        if metric != "validation_score":
+            fail_runtime(
+                "official structured-record scorer requires metric=validation_score."
+            )
+        evaluation_artifact = resolve_runtime_artifact(
+            runtime_manifest,
+            lane="evaluation",
+            role="rubric",
+            fail_runtime=fail_runtime,
+        )
+        submission_artifact = resolve_runtime_artifact(
+            runtime_manifest,
+            lane="submission",
+            role="record",
+            fail_runtime=fail_runtime,
+        )
+        evaluation_kind = evaluation_artifact["slot"].get("validator", {}).get("kind")
+        submission_kind = submission_artifact["slot"].get("validator", {}).get("kind")
+        if evaluation_kind not in {"json_document", "json_schema"}:
+            fail_runtime(
+                "official structured-record scorer requires rubric validator.kind=json_document or json_schema."
+            )
+        if submission_kind not in {"json_document", "json_schema"}:
+            fail_runtime(
+                "official structured-record scorer requires record validator.kind=json_document or json_schema."
+            )
+        comparison_kind = "structured_validation"
+    elif exact_match_relation is not None:
+        if metric != "exact_match":
+            fail_runtime("official exact-match scorer requires metric=exact_match.")
+        evaluation_artifact = resolve_runtime_artifact(
+            runtime_manifest,
+            lane="evaluation",
+            role="reference",
+            fail_runtime=fail_runtime,
+        )
+        submission_artifact = resolve_runtime_artifact(
+            runtime_manifest,
+            lane="submission",
+            role="answer",
+            fail_runtime=fail_runtime,
+        )
+        comparison_kind = resolve_exact_match_mode(
+            evaluation_artifact["slot"],
+            submission_artifact["slot"],
+        )
     else:
         fail_runtime(
-            "official exact-match and structured-record scorers currently support csv_table, json_file, and opaque_file submissions."
+            "Runtime manifest must declare either exact_match(reference, answer) or structured_validation(rubric, record)."
         )
 
     return {
         "comparison_kind": comparison_kind,
-        "evaluation_path": runtime_config["evaluation_path"],
-        "submission_path": runtime_config["submission_path"],
+        "evaluation_path": evaluation_artifact["path"],
+        "submission_path": submission_artifact["path"],
     }
 
 
@@ -161,7 +227,7 @@ def compare_csv_exact_match(evaluation_path: Path, submission_path: Path) -> Non
             {
                 "ok": True,
                 "details": {
-                    "comparison_kind": "csv_table",
+                    "comparison_kind": "csv_exact_match",
                     "comparable_rows": 0,
                     "mismatched_row_penalty": 0,
                     "selected_metric": "exact_match",
@@ -221,7 +287,7 @@ def compare_csv_exact_match(evaluation_path: Path, submission_path: Path) -> Non
         {
             "ok": True,
             "details": {
-                "comparison_kind": "csv_table",
+                "comparison_kind": "csv_exact_match",
                 "comparable_rows": comparable_rows,
                 "mismatched_row_penalty": mismatched_row_penalty,
                 "selected_metric": "exact_match",
@@ -263,7 +329,7 @@ def compare_json_exact_match(evaluation_path: Path, submission_path: Path) -> No
         {
             "ok": True,
             "details": {
-                "comparison_kind": "json_file",
+                "comparison_kind": "json_exact_match",
                 "selected_metric": "exact_match",
                 "selected_metric_value": score,
             },
@@ -342,7 +408,7 @@ def compare_structured_record_validation(
     if not isinstance(submission, dict):
         reject_submission(
             "Submission must be a JSON object.",
-            {"comparison_kind": "json_record"},
+            {"comparison_kind": "structured_validation"},
         )
 
     rubric = parse_structured_record_rubric(rubric_document)
@@ -384,7 +450,7 @@ def compare_structured_record_validation(
         {
             "ok": True,
             "details": {
-                "comparison_kind": "json_record",
+                "comparison_kind": "structured_validation",
                 "selected_metric": "validation_score",
                 "selected_metric_value": float(round(score, 12)),
                 "checks_passed": checks_passed,
@@ -416,7 +482,7 @@ def read_binary_document(path: Path, label: str, runtime_error: bool) -> bytes:
     raise AssertionError("unreachable")
 
 
-def compare_opaque_exact_match(evaluation_path: Path, submission_path: Path) -> None:
+def compare_byte_exact_match(evaluation_path: Path, submission_path: Path) -> None:
     truth = read_binary_document(evaluation_path, "Evaluation bundle", True)
     submission = read_binary_document(submission_path, "Submission", False)
     matched = truth == submission
@@ -426,7 +492,7 @@ def compare_opaque_exact_match(evaluation_path: Path, submission_path: Path) -> 
         {
             "ok": True,
             "details": {
-                "comparison_kind": "opaque_file",
+                "comparison_kind": "byte_exact_match",
                 "selected_metric": "exact_match",
                 "selected_metric_value": score,
             },
@@ -442,19 +508,19 @@ def main() -> None:
     evaluation_path = runtime_config["evaluation_path"]
     submission_path = runtime_config["submission_path"]
 
-    if runtime_config["comparison_kind"] == "csv_table":
+    if runtime_config["comparison_kind"] == "csv_exact_match":
         compare_csv_exact_match(evaluation_path, submission_path)
         return
 
-    if runtime_config["comparison_kind"] == "json_file":
+    if runtime_config["comparison_kind"] == "json_exact_match":
         compare_json_exact_match(evaluation_path, submission_path)
         return
 
-    if runtime_config["comparison_kind"] == "json_record":
+    if runtime_config["comparison_kind"] == "structured_validation":
         compare_structured_record_validation(evaluation_path, submission_path)
         return
 
-    compare_opaque_exact_match(evaluation_path, submission_path)
+    compare_byte_exact_match(evaluation_path, submission_path)
 
 
 if __name__ == "__main__":

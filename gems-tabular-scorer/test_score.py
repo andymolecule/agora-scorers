@@ -1,11 +1,17 @@
 import importlib.util
 import json
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT_DIR / "gems-tabular-scorer" / "score.py"
+COMMON_DIR = ROOT_DIR / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_test_support import stage_runtime_artifact, write_runtime_manifest
 
 
 def load_scorer_module():
@@ -17,48 +23,70 @@ def load_scorer_module():
     return module
 
 
-def runtime_config(id_column: str, value_column: str, metric: str = "r2") -> dict:
+def build_artifact_contract(
+    *,
+    submission_id_column: str = "id",
+    submission_value_column: str = "prediction",
+) -> dict:
+    relations = [
+        {
+            "kind": "tabular_alignment",
+            "evaluation_role": "reference",
+            "submission_role": "predictions",
+        }
+    ]
     return {
-        "version": "v2",
-        "metric": metric,
-        "mount": {
-            "evaluation_bundle_name": "evaluation",
-            "submission_file_name": "submission",
-        },
-        "submission_contract": {
-            "version": "v1",
-            "kind": "csv_table",
-            "columns": {
-                "required": [id_column, value_column],
-                "id": id_column,
-                "value": value_column,
-                "allow_extra": True,
-            },
-        },
-        "evaluation_contract": {
-            "kind": "csv_table",
-            "columns": {
-                "required": ["id", "label"],
-                "id": "id",
-                "value": "label",
-                "allow_extra": True,
-            },
-        },
-        "policies": {
-            "coverage_policy": "reject",
-            "duplicate_id_policy": "reject",
-            "invalid_value_policy": "reject",
-        },
+        "evaluation": [
+            {
+                "role": "reference",
+                "required": True,
+                "description": "Hidden ground truth table",
+                "file": {
+                    "extension": ".csv",
+                    "mime_type": "text/csv",
+                    "max_bytes": 4096,
+                },
+                "validator": {
+                    "kind": "csv_columns",
+                    "required": ["id", "label"],
+                    "record_key": "id",
+                    "value_field": "label",
+                    "allow_extra": True,
+                },
+            }
+        ],
+        "submission": [
+            {
+                "role": "predictions",
+                "required": True,
+                "description": "Solver predictions",
+                "file": {
+                    "extension": ".csv",
+                    "mime_type": "text/csv",
+                    "max_bytes": 4096,
+                },
+                "validator": {
+                    "kind": "csv_columns",
+                    "required": [submission_id_column, submission_value_column],
+                    "record_key": submission_id_column,
+                    "value_field": submission_value_column,
+                    "allow_extra": True,
+                },
+            }
+        ],
+        "relations": relations,
     }
 
 
 def run_case(
     submission_text: str,
-    id_column: str = "id",
-    value_column: str = "prediction",
+    *,
+    submission_id_column: str = "id",
+    submission_value_column: str = "prediction",
     metric: str = "r2",
+    comparator: str = "maximize",
     ground_truth_text: str | None = None,
-    runtime_payload: dict | None = None,
+    runtime_manifest: dict | None = None,
 ):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-gems-tabular-scorer-"))
@@ -67,17 +95,49 @@ def run_case(
     input_dir.mkdir()
     output_dir.mkdir()
 
-    (input_dir / "evaluation").write_text(
-        ground_truth_text
-        if ground_truth_text is not None
-        else "id,label\ns1,10.0\ns2,11.2\ns3,9.8\ns4,12.3\ns5,13.1\ns6,8.4\ns7,7.7\ns8,15.2\ns9,10.5\ns10,9.1\n",
-        encoding="utf-8",
+    artifact_contract = build_artifact_contract(
+        submission_id_column=submission_id_column,
+        submission_value_column=submission_value_column,
     )
-    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
-    (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_payload or runtime_config(id_column, value_column, metric)),
-        encoding="utf-8",
+    evaluation_slot = artifact_contract["evaluation"][0]
+    submission_slot = artifact_contract["submission"][0]
+
+    evaluation_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="evaluation",
+        role="reference",
+        file_name="reference.csv",
+        payload=(
+            ground_truth_text
+            if ground_truth_text is not None
+            else "id,label\ns1,10.0\ns2,11.2\ns3,9.8\ns4,12.3\ns5,13.1\ns6,8.4\ns7,7.7\ns8,15.2\ns9,10.5\ns10,9.1\n"
+        ),
+        validator=evaluation_slot["validator"],
+        mime_type="text/csv",
     )
+    submission_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="submission",
+        role="predictions",
+        file_name="predictions.csv",
+        payload=submission_text,
+        validator=submission_slot["validator"],
+        mime_type="text/csv",
+    )
+
+    if runtime_manifest is None:
+        write_runtime_manifest(
+            input_dir,
+            metric=metric,
+            comparator=comparator,
+            artifact_contract=artifact_contract,
+            artifacts=[evaluation_artifact, submission_artifact],
+        )
+    else:
+        (input_dir / "runtime-manifest.json").write_text(
+            json.dumps(runtime_manifest),
+            encoding="utf-8",
+        )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
@@ -118,8 +178,8 @@ s8,15.2
 s9,10.5
 s10,9.1
 """
-custom_submission = sample_submission.replace("id,prediction", "sample_id,forecast")
-exit_code, payload = run_case(custom_submission, "sample_id", "forecast")
+custom_value_submission = sample_submission.replace("id,prediction", "id,forecast")
+exit_code, payload = run_case(custom_value_submission, submission_value_column="forecast")
 assert exit_code == 0, f"custom column run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["details"]["matched_rows"] == 10, payload
@@ -148,7 +208,7 @@ assert "non-numeric prediction values" in payload["error"], payload
 assert payload["details"]["invalid_value_ids"] > 0, payload
 
 perfect_rmse_submission = ground_truth.replace("label", "prediction")
-exit_code, payload = run_case(perfect_rmse_submission, metric="rmse")
+exit_code, payload = run_case(perfect_rmse_submission, metric="rmse", comparator="minimize")
 assert exit_code == 0, f"rmse run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
@@ -166,27 +226,73 @@ assert exit_code == 0, f"classification run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["details"]["accuracy"] == round(2 / 3, 12), payload
 
-legacy_runtime_payload = runtime_config("id", "prediction", "r2")
-legacy_runtime_payload["version"] = "v1"
-exit_code, payload = run_case(
-    sample_submission,
-    runtime_payload=legacy_runtime_payload,
-)
-assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
-assert payload["ok"] is False, payload
-assert "Expected version=v2" in payload["error"], payload
-
-old_mount_runtime_payload = runtime_config("id", "prediction", "r2")
-old_mount_runtime_payload["mount"] = {
-    "evaluation_bundle_name": "ground_truth.csv",
-    "submission_file_name": "submission",
+invalid_kind_manifest = {
+    "kind": "agora_runtime",
+    "metric": "r2",
+    "comparator": "maximize",
+    "artifact_contract": build_artifact_contract(),
+    "evaluation_bindings": [],
+    "artifacts": [],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
 }
 exit_code, payload = run_case(
     sample_submission,
-    runtime_payload=old_mount_runtime_payload,
+    runtime_manifest=invalid_kind_manifest,
 )
-assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert exit_code == 1, f"invalid manifest kind should fail loudly: {exit_code}"
 assert payload["ok"] is False, payload
-assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
+assert "kind=runtime_manifest" in payload["error"], payload
 
-print("regression scorer runtime tests passed")
+missing_relation_contract = build_artifact_contract()
+missing_relation_contract["relations"] = []
+missing_relation_manifest = {
+    "kind": "runtime_manifest",
+    "metric": "r2",
+    "comparator": "maximize",
+    "artifact_contract": missing_relation_contract,
+    "evaluation_bindings": [],
+    "artifacts": [
+        {
+            "lane": "evaluation",
+            "role": "reference",
+            "required": True,
+            "present": True,
+            "validator": missing_relation_contract["evaluation"][0]["validator"],
+            "relative_path": "evaluation/reference/reference.csv",
+            "file_name": "reference.csv",
+            "mime_type": "text/csv",
+            "size_bytes": 1,
+            "sha256": "0" * 64,
+        },
+        {
+            "lane": "submission",
+            "role": "predictions",
+            "required": True,
+            "present": True,
+            "validator": missing_relation_contract["submission"][0]["validator"],
+            "relative_path": "submission/predictions/predictions.csv",
+            "file_name": "predictions.csv",
+            "mime_type": "text/csv",
+            "size_bytes": 1,
+            "sha256": "1" * 64,
+        },
+    ],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
+}
+exit_code, payload = run_case(
+    sample_submission,
+    runtime_manifest=missing_relation_manifest,
+)
+assert exit_code == 1, f"missing relation should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "missing relation kind=tabular_alignment" in payload["error"], payload
+
+print("tabular scorer runtime tests passed")

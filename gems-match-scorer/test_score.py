@@ -1,11 +1,17 @@
 import importlib.util
 import json
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT_DIR / "gems-match-scorer" / "score.py"
+COMMON_DIR = ROOT_DIR / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_test_support import stage_runtime_artifact, write_runtime_manifest
 
 
 def load_scorer_module():
@@ -17,17 +23,97 @@ def load_scorer_module():
     return module
 
 
-def write_input_file(path: Path, payload: str | bytes):
-    if isinstance(payload, bytes):
-        path.write_bytes(payload)
-        return
-    path.write_text(payload, encoding="utf-8")
+def build_exact_match_contract(
+    *,
+    validator: dict,
+    extension: str,
+    mime_type: str | None,
+) -> dict:
+    relations = [
+        {
+            "kind": "exact_match",
+            "evaluation_role": "reference",
+            "submission_role": "answer",
+        }
+    ]
+    slot_file = {
+        "extension": extension,
+        "max_bytes": 4096,
+    }
+    if mime_type is not None:
+        slot_file["mime_type"] = mime_type
+
+    return {
+        "evaluation": [
+            {
+                "role": "reference",
+                "required": True,
+                "description": "Hidden reference artifact",
+                "file": dict(slot_file),
+                "validator": validator,
+            }
+        ],
+        "submission": [
+            {
+                "role": "answer",
+                "required": True,
+                "description": "Solver answer artifact",
+                "file": dict(slot_file),
+                "validator": validator,
+            }
+        ],
+        "relations": relations,
+    }
+
+
+def build_structured_validation_contract() -> dict:
+    relations = [
+        {
+            "kind": "structured_validation",
+            "evaluation_role": "rubric",
+            "submission_role": "record",
+        }
+    ]
+    json_slot_file = {
+        "extension": ".json",
+        "mime_type": "application/json",
+        "max_bytes": 4096,
+    }
+    return {
+        "evaluation": [
+            {
+                "role": "rubric",
+                "required": True,
+                "description": "Hidden structured validation rubric",
+                "file": dict(json_slot_file),
+                "validator": {"kind": "json_document"},
+            }
+        ],
+        "submission": [
+            {
+                "role": "record",
+                "required": True,
+                "description": "Solver JSON record",
+                "file": dict(json_slot_file),
+                "validator": {"kind": "json_document"},
+            }
+        ],
+        "relations": relations,
+    }
 
 
 def run_case(
-    runtime_config: dict,
+    *,
+    artifact_contract: dict,
+    metric: str,
+    comparator: str,
+    evaluation_role: str,
+    evaluation_file_name: str,
     evaluation_payload: str | bytes,
+    submission_role: str,
+    submission_file_name: str,
     submission_payload: str | bytes,
+    runtime_manifest: dict | None = None,
 ):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-gems-match-scorer-"))
@@ -36,17 +122,43 @@ def run_case(
     input_dir.mkdir()
     output_dir.mkdir()
 
-    mount = runtime_config["mount"]
-    write_input_file(input_dir / mount["evaluation_bundle_name"], evaluation_payload)
-    write_input_file(input_dir / mount["submission_file_name"], submission_payload)
-    (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_config),
-        encoding="utf-8",
+    evaluation_slot = artifact_contract["evaluation"][0]
+    submission_slot = artifact_contract["submission"][0]
+    evaluation_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="evaluation",
+        role=evaluation_role,
+        file_name=evaluation_file_name,
+        payload=evaluation_payload,
+        validator=evaluation_slot["validator"],
+        mime_type=evaluation_slot["file"].get("mime_type"),
     )
+    submission_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="submission",
+        role=submission_role,
+        file_name=submission_file_name,
+        payload=submission_payload,
+        validator=submission_slot["validator"],
+        mime_type=submission_slot["file"].get("mime_type"),
+    )
+
+    if runtime_manifest is None:
+        write_runtime_manifest(
+            input_dir,
+            metric=metric,
+            comparator=comparator,
+            artifact_contract=artifact_contract,
+            artifacts=[evaluation_artifact, submission_artifact],
+        )
+    else:
+        (input_dir / "runtime-manifest.json").write_text(
+            json.dumps(runtime_manifest),
+            encoding="utf-8",
+        )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
-    module.RUNTIME_CONFIG_PATH = input_dir / "agora-runtime.json"
     module.OUTPUT_PATH = output_dir / "score.json"
 
     exit_code = 0
@@ -60,100 +172,77 @@ def run_case(
     return exit_code, payload
 
 
-csv_runtime_config = {
-    "version": "v2",
-    "metric": "exact_match",
-    "mount": {
-        "evaluation_bundle_name": "evaluation",
-        "submission_file_name": "submission",
+csv_contract = build_exact_match_contract(
+    validator={
+        "kind": "csv_columns",
+        "required": ["id", "value"],
+        "record_key": "id",
+        "value_field": "value",
+        "allow_extra": True,
     },
-    "submission_contract": {
-        "version": "v1",
-        "kind": "csv_table",
-        "file": {
-            "extension": ".csv",
-            "mime": "text/csv",
-            "max_bytes": 1024,
-        },
-        "columns": {
-            "required": ["id", "value"],
-            "id": "id",
-            "value": "value",
-            "allow_extra": True,
-        },
-    },
-}
-
+    extension=".csv",
+    mime_type="text/csv",
+)
 exit_code, payload = run_case(
-    csv_runtime_config,
-    "id,value\nrow-1,1\nrow-2,2\n",
-    "id,value\nrow-1,1\nrow-2,2\n",
+    artifact_contract=csv_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.csv",
+    evaluation_payload="id,value\nrow-1,1\nrow-2,2\n",
+    submission_role="answer",
+    submission_file_name="answer.csv",
+    submission_payload="id,value\nrow-1,1\nrow-2,2\n",
 )
 assert exit_code == 0, f"csv exact-match run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
-assert payload["details"]["comparison_kind"] == "csv_table", payload
+assert payload["details"]["comparison_kind"] == "csv_exact_match", payload
 
-json_runtime_config = {
-    "version": "v2",
-    "metric": "exact_match",
-    "mount": {
-        "evaluation_bundle_name": "evaluation",
-        "submission_file_name": "submission",
-    },
-    "submission_contract": {
-        "version": "v1",
-        "kind": "json_file",
-        "file": {
-            "extension": ".json",
-            "mime": "application/json",
-            "max_bytes": 1024,
-        },
-    },
-}
-
+json_contract = build_exact_match_contract(
+    validator={"kind": "json_document"},
+    extension=".json",
+    mime_type="application/json",
+)
 exit_code, payload = run_case(
-    json_runtime_config,
-    # Object key order is intentionally irrelevant here. json.loads() normalizes
-    # JSON objects into Python dicts, and exact-match compares the parsed value.
-    '{"result":{"value":42,"status":"ok"}}',
-    '{"result":{"status":"ok","value":42}}',
+    artifact_contract=json_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.json",
+    evaluation_payload='{"result":{"value":42,"status":"ok"}}',
+    submission_role="answer",
+    submission_file_name="answer.json",
+    submission_payload='{"result":{"status":"ok","value":42}}',
 )
 assert exit_code == 0, f"json exact-match run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
-assert payload["details"]["comparison_kind"] == "json_file", payload
+assert payload["details"]["comparison_kind"] == "json_exact_match", payload
 
 exit_code, payload = run_case(
-    json_runtime_config,
-    '{"result":{"value":42,"status":"ok"}}',
-    '{"result":{"status":"ok","value":43}}',
+    artifact_contract=json_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.json",
+    evaluation_payload='{"result":{"value":42,"status":"ok"}}',
+    submission_role="answer",
+    submission_file_name="answer.json",
+    submission_payload='{"result":{"status":"ok","value":43}}',
 )
 assert exit_code == 0, f"json mismatch run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 0.0, payload
 
-structured_record_runtime_config = {
-    "version": "v2",
-    "metric": "validation_score",
-    "mount": {
-        "evaluation_bundle_name": "evaluation",
-        "submission_file_name": "submission",
-    },
-    "submission_contract": {
-        "version": "v1",
-        "kind": "json_file",
-        "file": {
-            "extension": ".json",
-            "mime": "application/json",
-            "max_bytes": 1024,
-        },
-    },
-}
-
+structured_contract = build_structured_validation_contract()
 exit_code, payload = run_case(
-    structured_record_runtime_config,
-    json.dumps(
+    artifact_contract=structured_contract,
+    metric="validation_score",
+    comparator="maximize",
+    evaluation_role="rubric",
+    evaluation_file_name="rubric.json",
+    evaluation_payload=json.dumps(
         {
             "required_fields": [
                 "incident_id",
@@ -167,7 +256,9 @@ exit_code, payload = run_case(
             },
         }
     ),
-    json.dumps(
+    submission_role="record",
+    submission_file_name="record.json",
+    submission_payload=json.dumps(
         {
             "incident_id": "INC-2042",
             "severity": "high",
@@ -176,17 +267,19 @@ exit_code, payload = run_case(
         }
     ),
 )
-assert (
-    exit_code == 0
-), f"structured-record validation run should not crash: {exit_code}"
+assert exit_code == 0, f"structured-record validation run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
-assert payload["details"]["comparison_kind"] == "json_record", payload
+assert payload["details"]["comparison_kind"] == "structured_validation", payload
 assert payload["details"]["checks_passed"] == payload["details"]["checks_total"], payload
 
 exit_code, payload = run_case(
-    structured_record_runtime_config,
-    json.dumps(
+    artifact_contract=structured_contract,
+    metric="validation_score",
+    comparator="maximize",
+    evaluation_role="rubric",
+    evaluation_file_name="rubric.json",
+    evaluation_payload=json.dumps(
         {
             "required_fields": [
                 "incident_id",
@@ -200,7 +293,9 @@ exit_code, payload = run_case(
             },
         }
     ),
-    json.dumps(
+    submission_role="record",
+    submission_file_name="record.json",
+    submission_payload=json.dumps(
         {
             "incident_id": "INC-2042",
             "severity": "critical",
@@ -208,75 +303,91 @@ exit_code, payload = run_case(
         }
     ),
 )
-assert (
-    exit_code == 0
-), f"structured-record invalid run should not crash: {exit_code}"
+assert exit_code == 0, f"structured-record invalid run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] < 0.5, payload
 assert "missing_or_empty:timeline" in payload["details"]["failed_checks"], payload
 assert "array_required:actions_taken" in payload["details"]["failed_checks"], payload
 assert "allowed_value:severity" in payload["details"]["failed_checks"], payload
 
-opaque_runtime_config = {
-    "version": "v2",
-    "metric": "exact_match",
-    "mount": {
-        "evaluation_bundle_name": "evaluation",
-        "submission_file_name": "submission",
-    },
-    "submission_contract": {
-        "version": "v1",
-        "kind": "opaque_file",
-        "file": {
-            "extension": ".pdf",
-            "mime": "application/pdf",
-            "max_bytes": 1024,
-        },
-    },
-}
-
-exit_code, payload = run_case(
-    opaque_runtime_config,
-    b"%PDF-1.7\nmock reference document\n",
-    b"%PDF-1.7\nmock reference document\n",
+byte_contract = build_exact_match_contract(
+    validator={"kind": "none"},
+    extension=".pdf",
+    mime_type="application/pdf",
 )
-assert exit_code == 0, f"opaque exact-match run should not crash: {exit_code}"
+exit_code, payload = run_case(
+    artifact_contract=byte_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.pdf",
+    evaluation_payload=b"%PDF-1.7\nmock reference document\n",
+    submission_role="answer",
+    submission_file_name="answer.pdf",
+    submission_payload=b"%PDF-1.7\nmock reference document\n",
+)
+assert exit_code == 0, f"byte exact-match run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
-assert payload["details"]["comparison_kind"] == "opaque_file", payload
+assert payload["details"]["comparison_kind"] == "byte_exact_match", payload
 
 exit_code, payload = run_case(
-    opaque_runtime_config,
-    b"%PDF-1.7\nmock reference document\n",
-    b"%PDF-1.7\nchanged solver document\n",
+    artifact_contract=byte_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.pdf",
+    evaluation_payload=b"%PDF-1.7\nmock reference document\n",
+    submission_role="answer",
+    submission_file_name="answer.pdf",
+    submission_payload=b"%PDF-1.7\nchanged solver document\n",
 )
-assert exit_code == 0, f"opaque mismatch run should not crash: {exit_code}"
+assert exit_code == 0, f"byte mismatch run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 0.0, payload
 
-legacy_runtime_config = dict(csv_runtime_config)
-legacy_runtime_config["version"] = "v1"
 exit_code, payload = run_case(
-    legacy_runtime_config,
-    "id,value\nrow-1,1\nrow-2,2\n",
-    "id,value\nrow-1,1\nrow-2,2\n",
+    artifact_contract=csv_contract,
+    metric="validation_score",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.csv",
+    evaluation_payload="id,value\nrow-1,1\nrow-2,2\n",
+    submission_role="answer",
+    submission_file_name="answer.csv",
+    submission_payload="id,value\nrow-1,1\nrow-2,2\n",
 )
-assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
+assert exit_code == 1, f"wrong exact-match metric should fail loudly: {exit_code}"
 assert payload["ok"] is False, payload
-assert "Expected version=v2" in payload["error"], payload
+assert "metric=exact_match" in payload["error"], payload
 
-old_mount_runtime_config = dict(csv_runtime_config)
-old_mount_runtime_config["mount"] = {
-    "evaluation_bundle_name": "ground_truth.csv",
-    "submission_file_name": "submission",
+invalid_kind_manifest = {
+    "kind": "agora_runtime",
+    "metric": "exact_match",
+    "comparator": "maximize",
+    "artifact_contract": csv_contract,
+    "evaluation_bindings": [],
+    "artifacts": [],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
 }
 exit_code, payload = run_case(
-    old_mount_runtime_config,
-    "id,value\nrow-1,1\nrow-2,2\n",
-    "id,value\nrow-1,1\nrow-2,2\n",
+    artifact_contract=csv_contract,
+    metric="exact_match",
+    comparator="maximize",
+    evaluation_role="reference",
+    evaluation_file_name="reference.csv",
+    evaluation_payload="id,value\nrow-1,1\nrow-2,2\n",
+    submission_role="answer",
+    submission_file_name="answer.csv",
+    submission_payload="id,value\nrow-1,1\nrow-2,2\n",
+    runtime_manifest=invalid_kind_manifest,
 )
-assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert exit_code == 1, f"invalid manifest kind should fail loudly: {exit_code}"
 assert payload["ok"] is False, payload
-assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
+assert "kind=runtime_manifest" in payload["error"], payload
 
-print("repro scorer runtime tests passed")
+print("match scorer runtime tests passed")

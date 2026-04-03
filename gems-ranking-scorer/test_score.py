@@ -1,11 +1,17 @@
 import importlib.util
 import json
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT_DIR / "gems-ranking-scorer" / "score.py"
+COMMON_DIR = ROOT_DIR / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.insert(0, str(COMMON_DIR))
+
+from runtime_test_support import stage_runtime_artifact, write_runtime_manifest
 
 
 def load_scorer_module():
@@ -17,132 +23,71 @@ def load_scorer_module():
     return module
 
 
-def runtime_config(metric: str = "spearman") -> dict:
+def build_artifact_contract(
+    *,
+    submission_id_column: str = "id",
+    submission_value_column: str = "score",
+    evaluation_id_column: str = "id",
+    evaluation_value_column: str = "label",
+) -> dict:
+    relations = [
+        {
+            "kind": "tabular_alignment",
+            "evaluation_role": "reference",
+            "submission_role": "predictions",
+        }
+    ]
     return {
-        "version": "v2",
-        "metric": metric,
-        "mount": {
-            "evaluation_bundle_name": "evaluation",
-            "submission_file_name": "submission",
-        },
-        "submission_contract": {
-            "version": "v1",
-            "kind": "csv_table",
-            "columns": {
-                "required": ["id", "score"],
-                "id": "id",
-                "value": "score",
-                "allow_extra": True,
-            },
-        },
-        "evaluation_contract": {
-            "kind": "csv_table",
-            "columns": {
-                "required": ["id", "label"],
-                "id": "id",
-                "value": "label",
-                "allow_extra": True,
-            },
-        },
-        "policies": {
-            "coverage_policy": "reject",
-            "duplicate_id_policy": "reject",
-            "invalid_value_policy": "reject",
-        },
+        "evaluation": [
+            {
+                "role": "reference",
+                "required": True,
+                "description": "Hidden relevance labels",
+                "file": {
+                    "extension": ".csv",
+                    "mime_type": "text/csv",
+                    "max_bytes": 4096,
+                },
+                "validator": {
+                    "kind": "csv_columns",
+                    "required": [evaluation_id_column, evaluation_value_column],
+                    "record_key": evaluation_id_column,
+                    "value_field": evaluation_value_column,
+                    "allow_extra": True,
+                },
+            }
+        ],
+        "submission": [
+            {
+                "role": "predictions",
+                "required": True,
+                "description": "Solver rankings",
+                "file": {
+                    "extension": ".csv",
+                    "mime_type": "text/csv",
+                    "max_bytes": 4096,
+                },
+                "validator": {
+                    "kind": "csv_columns",
+                    "required": [submission_id_column, submission_value_column],
+                    "record_key": submission_id_column,
+                    "value_field": submission_value_column,
+                    "allow_extra": True,
+                },
+            }
+        ],
+        "relations": relations,
     }
-
-
-def docking_runtime_config(metric: str = "spearman") -> dict:
-    return {
-        "version": "v2",
-        "metric": metric,
-        "mount": {
-            "evaluation_bundle_name": "evaluation",
-            "submission_file_name": "submission",
-        },
-        "submission_contract": {
-            "version": "v1",
-            "kind": "csv_table",
-            "columns": {
-                "required": ["ligand_id", "docking_score"],
-                "id": "ligand_id",
-                "value": "docking_score",
-                "allow_extra": True,
-            },
-        },
-        "evaluation_contract": {
-            "kind": "csv_table",
-            "columns": {
-                "required": ["ligand_id", "reference_score"],
-                "id": "ligand_id",
-                "value": "reference_score",
-                "allow_extra": True,
-            },
-        },
-        "policies": {
-            "coverage_policy": "reject",
-            "duplicate_id_policy": "reject",
-            "invalid_value_policy": "reject",
-        },
-    }
-
-
-def run_case(submission_text: str, ground_truth_text: str, metric: str = "spearman"):
-    return run_case_with_runtime(
-        submission_text,
-        ground_truth_text,
-        runtime_config(metric),
-    )
 
 
 def run_case_with_runtime(
     submission_text: str,
     ground_truth_text: str,
-    runtime_payload: dict,
-):
-    module = load_scorer_module()
-    workspace = Path(tempfile.mkdtemp(prefix="agora-ranking-scorer-"))
-    input_dir = workspace / "input"
-    output_dir = workspace / "output"
-    input_dir.mkdir()
-    output_dir.mkdir()
-
-    (input_dir / "evaluation").write_text(ground_truth_text, encoding="utf-8")
-    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
-    (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_payload),
-        encoding="utf-8",
-    )
-
-    module.INPUT_DIR = input_dir
-    module.OUTPUT_DIR = output_dir
-    module.OUTPUT_PATH = output_dir / "score.json"
-
-    exit_code = 0
-    try:
-        module.main()
-    except SystemExit as exc:
-        exit_code = int(exc.code or 0)
-
-    payload = json.loads((output_dir / "score.json").read_text(encoding="utf-8"))
-    shutil.rmtree(workspace)
-    return exit_code, payload
-
-
-def run_docking_case(
-    submission_text: str, ground_truth_text: str, metric: str = "spearman"
-):
-    return run_docking_case_with_runtime(
-        submission_text,
-        ground_truth_text,
-        docking_runtime_config(metric),
-    )
-
-
-def run_docking_case_with_runtime(
-    submission_text: str,
-    ground_truth_text: str,
-    runtime_payload: dict,
+    *,
+    artifact_contract: dict | None = None,
+    metric: str = "spearman",
+    comparator: str = "maximize",
+    runtime_manifest: dict | None = None,
 ):
     module = load_scorer_module()
     workspace = Path(tempfile.mkdtemp(prefix="agora-gems-ranking-scorer-"))
@@ -151,12 +96,42 @@ def run_docking_case_with_runtime(
     input_dir.mkdir()
     output_dir.mkdir()
 
-    (input_dir / "evaluation").write_text(ground_truth_text, encoding="utf-8")
-    (input_dir / "submission").write_text(submission_text, encoding="utf-8")
-    (input_dir / "agora-runtime.json").write_text(
-        json.dumps(runtime_payload),
-        encoding="utf-8",
+    artifact_contract = artifact_contract or build_artifact_contract()
+    evaluation_slot = artifact_contract["evaluation"][0]
+    submission_slot = artifact_contract["submission"][0]
+
+    evaluation_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="evaluation",
+        role="reference",
+        file_name="reference.csv",
+        payload=ground_truth_text,
+        validator=evaluation_slot["validator"],
+        mime_type="text/csv",
     )
+    submission_artifact = stage_runtime_artifact(
+        input_dir,
+        lane="submission",
+        role="predictions",
+        file_name="predictions.csv",
+        payload=submission_text,
+        validator=submission_slot["validator"],
+        mime_type="text/csv",
+    )
+
+    if runtime_manifest is None:
+        write_runtime_manifest(
+            input_dir,
+            metric=metric,
+            comparator=comparator,
+            artifact_contract=artifact_contract,
+            artifacts=[evaluation_artifact, submission_artifact],
+        )
+    else:
+        (input_dir / "runtime-manifest.json").write_text(
+            json.dumps(runtime_manifest),
+            encoding="utf-8",
+        )
 
     module.INPUT_DIR = input_dir
     module.OUTPUT_DIR = output_dir
@@ -175,56 +150,123 @@ def run_docking_case_with_runtime(
 
 ground_truth = "id,label\na,3\nb,2\nc,1\n"
 perfect_submission = "id,score\na,3\nb,2\nc,1\n"
-exit_code, payload = run_case(perfect_submission, ground_truth, metric="spearman")
+exit_code, payload = run_case_with_runtime(
+    perfect_submission,
+    ground_truth,
+    metric="spearman",
+)
 assert exit_code == 0, f"perfect spearman run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
 assert payload["details"]["selected_metric"] == "spearman", payload
 
-exit_code, payload = run_case(perfect_submission, ground_truth, metric="ndcg")
+exit_code, payload = run_case_with_runtime(
+    perfect_submission,
+    ground_truth,
+    metric="ndcg",
+)
 assert exit_code == 0, f"perfect ndcg run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["score"] == 1.0, payload
 assert payload["details"]["selected_metric"] == "ndcg", payload
 
 partial_submission = "id,score\na,3\nb,2\n"
-exit_code, payload = run_case(partial_submission, ground_truth, metric="spearman")
+exit_code, payload = run_case_with_runtime(
+    partial_submission,
+    ground_truth,
+    metric="spearman",
+)
 assert exit_code == 0, f"partial ranking run should be rejected as invalid, not crash: {exit_code}"
 assert payload["ok"] is False, payload
 assert "exactly one ranking row" in payload["error"], payload
 
+docking_contract = build_artifact_contract(
+    submission_id_column="ligand_id",
+    submission_value_column="docking_score",
+    evaluation_id_column="ligand_id",
+    evaluation_value_column="reference_score",
+)
 docking_ground_truth = "ligand_id,reference_score\nlig1,-7.3\nlig2,-8.1\n"
 docking_submission = "ligand_id,docking_score\nlig1,-7.1\nlig2,-8.0\n"
-exit_code, payload = run_docking_case(
-    docking_submission, docking_ground_truth, metric="spearman"
+exit_code, payload = run_case_with_runtime(
+    docking_submission,
+    docking_ground_truth,
+    artifact_contract=docking_contract,
+    metric="spearman",
 )
 assert exit_code == 0, f"docking run should not crash: {exit_code}"
 assert payload["ok"] is True, payload
 assert payload["details"]["selected_metric"] == "spearman", payload
 
-legacy_runtime_payload = runtime_config("spearman")
-legacy_runtime_payload["version"] = "v1"
-exit_code, payload = run_case_with_runtime(
-    perfect_submission,
-    ground_truth,
-    legacy_runtime_payload,
-)
-assert exit_code == 1, f"legacy runtime version should fail loudly: {exit_code}"
-assert payload["ok"] is False, payload
-assert "Expected version=v2" in payload["error"], payload
-
-old_mount_runtime_payload = runtime_config("spearman")
-old_mount_runtime_payload["mount"] = {
-    "evaluation_bundle_name": "ground_truth.csv",
-    "submission_file_name": "submission",
+invalid_kind_manifest = {
+    "kind": "agora_runtime",
+    "metric": "spearman",
+    "comparator": "maximize",
+    "artifact_contract": build_artifact_contract(),
+    "evaluation_bindings": [],
+    "artifacts": [],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
 }
 exit_code, payload = run_case_with_runtime(
     perfect_submission,
     ground_truth,
-    old_mount_runtime_payload,
+    runtime_manifest=invalid_kind_manifest,
 )
-assert exit_code == 1, f"old mount names should fail loudly: {exit_code}"
+assert exit_code == 1, f"invalid manifest kind should fail loudly: {exit_code}"
 assert payload["ok"] is False, payload
-assert "evaluation_bundle_name must be evaluation" in payload["error"], payload
+assert "kind=runtime_manifest" in payload["error"], payload
+
+missing_relation_contract = build_artifact_contract()
+missing_relation_contract["relations"] = []
+missing_relation_manifest = {
+    "kind": "runtime_manifest",
+    "metric": "spearman",
+    "comparator": "maximize",
+    "artifact_contract": missing_relation_contract,
+    "evaluation_bindings": [],
+    "artifacts": [
+        {
+            "lane": "evaluation",
+            "role": "reference",
+            "required": True,
+            "present": True,
+            "validator": missing_relation_contract["evaluation"][0]["validator"],
+            "relative_path": "evaluation/reference/reference.csv",
+            "file_name": "reference.csv",
+            "mime_type": "text/csv",
+            "size_bytes": 1,
+            "sha256": "0" * 64,
+        },
+        {
+            "lane": "submission",
+            "role": "predictions",
+            "required": True,
+            "present": True,
+            "validator": missing_relation_contract["submission"][0]["validator"],
+            "relative_path": "submission/predictions/predictions.csv",
+            "file_name": "predictions.csv",
+            "mime_type": "text/csv",
+            "size_bytes": 1,
+            "sha256": "1" * 64,
+        },
+    ],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
+}
+exit_code, payload = run_case_with_runtime(
+    perfect_submission,
+    ground_truth,
+    runtime_manifest=missing_relation_manifest,
+)
+assert exit_code == 1, f"missing relation should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "missing relation kind=tabular_alignment" in payload["error"], payload
 
 print("ranking scorer runtime tests passed")
