@@ -40,12 +40,12 @@ It owns:
 - parsing `/input/runtime-manifest.json`
 - resolving relation declarations
 - resolving role-bound staged artifact paths
-- normalizing policy defaults
+- validating the declared runtime metric and policies
 
 If the runtime contract changes, update this file first and port all scorers in
 the same cut.
 
-### `gems-*/score.py`
+### `agora-scorer-*/score.py`
 
 Each scorer entrypoint owns only scorer-specific logic:
 
@@ -57,7 +57,7 @@ Each scorer entrypoint owns only scorer-specific logic:
 Do not re-parse runtime config differently in each scorer. Keep the shared
 runtime loader as the one scorer-side protocol owner.
 
-### `gems-*/test_score.py`
+### `agora-scorer-*/test_score.py`
 
 Each scorer test file should prove:
 

@@ -11,6 +11,10 @@ on:
       - ".github/workflows/publish.yml"
       - "scripts/**"
 
+concurrency:
+  group: scorer-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write

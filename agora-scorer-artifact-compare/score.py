@@ -111,7 +111,7 @@ def load_runtime_config() -> dict:
         input_dir=INPUT_DIR,
         fail_runtime=fail_runtime,
     )
-    metric = runtime_manifest.get("metric", "custom")
+    metric = runtime_manifest["metric"]
 
     structured_relation = find_relation(
         runtime_manifest,

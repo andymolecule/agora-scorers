@@ -7,6 +7,7 @@ RUNTIME_MANIFEST_FILE_NAME = "runtime-manifest.json"
 _COVERAGE_POLICIES = {"reject", "ignore", "penalize"}
 _DUPLICATE_ID_POLICIES = {"reject", "ignore"}
 _INVALID_VALUE_POLICIES = {"reject", "ignore"}
+_COMPARATORS = {"maximize", "minimize"}
 
 
 def _normalize_relative_path(value: Any, *, fail_runtime: Callable[[str], None]) -> Path:
@@ -37,6 +38,18 @@ def _require_mapping(
     return value
 
 
+def _require_non_empty_string(
+    container: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> str:
+    value = container.get(key)
+    if not isinstance(value, str) or not value.strip():
+        fail_runtime(f"Runtime manifest {key} must be a non-empty string.")
+    return value.strip()
+
+
 def _require_list(
     container: dict[str, Any],
     key: str,
@@ -46,6 +59,25 @@ def _require_list(
     value = container.get(key)
     if not isinstance(value, list):
         fail_runtime(f"Runtime manifest {key} must be an array.")
+    return value
+
+
+def _require_enum_value(
+    container: dict[str, Any],
+    key: str,
+    *,
+    allowed_values: set[str],
+    fail_runtime: Callable[[str], None],
+) -> str:
+    value = _require_non_empty_string(
+        container,
+        key,
+        fail_runtime=fail_runtime,
+    )
+    if value not in allowed_values:
+        fail_runtime(
+            f"Unsupported {key} in runtime manifest. Expected one of {','.join(sorted(allowed_values))}."
+        )
     return value
 
 
@@ -94,28 +126,54 @@ def load_runtime_manifest(
     if not isinstance(relations, list):
         fail_runtime("Runtime manifest artifact_contract.relations must be an array.")
 
-    policies = runtime_manifest.get("policies", {})
-    if not isinstance(policies, dict):
-        fail_runtime("Runtime manifest policies must be an object.")
-
-    coverage_policy = policies.get("coverage_policy", "ignore")
-    duplicate_id_policy = policies.get("duplicate_id_policy", "ignore")
-    invalid_value_policy = policies.get("invalid_value_policy", "ignore")
-    if coverage_policy not in _COVERAGE_POLICIES:
-        fail_runtime("Unsupported coverage_policy in runtime manifest.")
-    if duplicate_id_policy not in _DUPLICATE_ID_POLICIES:
-        fail_runtime("Unsupported duplicate_id_policy in runtime manifest.")
-    if invalid_value_policy not in _INVALID_VALUE_POLICIES:
-        fail_runtime("Unsupported invalid_value_policy in runtime manifest.")
+    metric = _require_non_empty_string(
+        runtime_manifest,
+        "metric",
+        fail_runtime=fail_runtime,
+    )
+    comparator = _require_enum_value(
+        runtime_manifest,
+        "comparator",
+        allowed_values=_COMPARATORS,
+        fail_runtime=fail_runtime,
+    )
+    evaluation_bindings = _require_list(
+        runtime_manifest,
+        "evaluation_bindings",
+        fail_runtime=fail_runtime,
+    )
+    policies = _require_mapping(
+        runtime_manifest,
+        "policies",
+        fail_runtime=fail_runtime,
+    )
+    coverage_policy = _require_enum_value(
+        policies,
+        "coverage_policy",
+        allowed_values=_COVERAGE_POLICIES,
+        fail_runtime=fail_runtime,
+    )
+    duplicate_id_policy = _require_enum_value(
+        policies,
+        "duplicate_id_policy",
+        allowed_values=_DUPLICATE_ID_POLICIES,
+        fail_runtime=fail_runtime,
+    )
+    invalid_value_policy = _require_enum_value(
+        policies,
+        "invalid_value_policy",
+        allowed_values=_INVALID_VALUE_POLICIES,
+        fail_runtime=fail_runtime,
+    )
 
     return {
-        "metric": runtime_manifest.get("metric", "custom"),
-        "comparator": runtime_manifest.get("comparator"),
+        "metric": metric,
+        "comparator": comparator,
         "artifact_contract": artifact_contract,
         "evaluation_slots": evaluation_slots,
         "submission_slots": submission_slots,
         "artifacts": artifacts,
-        "evaluation_bindings": runtime_manifest.get("evaluation_bindings", []),
+        "evaluation_bindings": evaluation_bindings,
         "policies": {
             "coverage_policy": coverage_policy,
             "duplicate_id_policy": duplicate_id_policy,

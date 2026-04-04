@@ -1,9 +1,9 @@
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
+LABEL org.opencontainers.image.source="https://github.com/andymolecule/agora-scorers" \
       org.opencontainers.image.url="https://github.com/andymolecule/agora-scorers/tree/main/agora-scorer-ranking-metric" \
-      org.opencontainers.image.title="Agora Docking Scorer" \
-      org.opencontainers.image.description="Deterministic docking scorer image family for Agora docking presets."
+      org.opencontainers.image.title="Agora Ranking Metric Scorer" \
+      org.opencontainers.image.description="Deterministic ranking metric scorer for leaderboard-style challenges."
 
 WORKDIR /app
 COPY common /app/common

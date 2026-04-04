@@ -295,4 +295,40 @@ assert exit_code == 1, f"missing relation should fail loudly: {exit_code}"
 assert payload["ok"] is False, payload
 assert "missing relation kind=tabular_alignment" in payload["error"], payload
 
+missing_metric_manifest = {
+    "kind": "runtime_manifest",
+    "comparator": "maximize",
+    "artifact_contract": build_artifact_contract(),
+    "evaluation_bindings": [],
+    "artifacts": [],
+    "policies": {
+        "coverage_policy": "reject",
+        "duplicate_id_policy": "reject",
+        "invalid_value_policy": "reject",
+    },
+}
+exit_code, payload = run_case(
+    sample_submission,
+    runtime_manifest=missing_metric_manifest,
+)
+assert exit_code == 1, f"missing metric should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "metric must be a non-empty string" in payload["error"], payload
+
+missing_policies_manifest = {
+    "kind": "runtime_manifest",
+    "metric": "r2",
+    "comparator": "maximize",
+    "artifact_contract": build_artifact_contract(),
+    "evaluation_bindings": [],
+    "artifacts": [],
+}
+exit_code, payload = run_case(
+    sample_submission,
+    runtime_manifest=missing_policies_manifest,
+)
+assert exit_code == 1, f"missing policies should fail loudly: {exit_code}"
+assert payload["ok"] is False, payload
+assert "policies must be an object" in payload["error"], payload
+
 print("tabular scorer runtime tests passed")

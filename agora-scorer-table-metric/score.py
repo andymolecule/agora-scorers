@@ -391,7 +391,7 @@ def compute_macro_f1(y_true: list[str], y_pred: list[str]) -> float:
 
 def main() -> None:
     runtime_config = load_runtime_config()
-    metric = str(runtime_config.get("metric") or "r2")
+    metric = runtime_config["metric"]
     if metric not in NUMERIC_METRICS | CLASSIFICATION_METRICS:
         fail_runtime(
             f"Unsupported metric {metric}. Next step: choose one of {','.join(sorted(NUMERIC_METRICS | CLASSIFICATION_METRICS))}."

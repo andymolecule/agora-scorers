@@ -127,7 +127,7 @@ def load_runtime_config() -> dict:
         role="predictions",
         fail_runtime=fail_runtime,
     )
-    metric = runtime_manifest.get("metric")
+    metric = runtime_manifest["metric"]
     if metric not in SUPPORTED_METRICS:
         fail_runtime(
             f"Unsupported metric {metric}. Next step: choose one of {','.join(sorted(SUPPORTED_METRICS))}."

@@ -1,9 +1,9 @@
 FROM python:3.11.9-slim
 
-LABEL org.opencontainers.image.source="https://github.com/andymolecule/Agora" \
+LABEL org.opencontainers.image.source="https://github.com/andymolecule/agora-scorers" \
       org.opencontainers.image.url="https://github.com/andymolecule/agora-scorers/tree/main/agora-scorer-python-execution" \
-      org.opencontainers.image.title="Agora Code Executor" \
-      org.opencontainers.image.description="Deterministic Python code execution scorer for Agora pass-rate challenges."
+      org.opencontainers.image.title="Agora Python Execution Scorer" \
+      org.opencontainers.image.description="Deterministic Python execution scorer for pass-rate challenges."
 
 WORKDIR /app
 COPY common /app/common
