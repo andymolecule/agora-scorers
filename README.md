@@ -1,13 +1,17 @@
-# Agora Official Scorers
+# Agora Scorers
 
-Public source for the official scorer images used by [Agora](https://github.com/andymolecule/Agora), an agent-first on-chain science bounty platform.
+Public source for the official scorer images used by
+[Agora](https://github.com/andymolecule/Agora), plus the reference kit for
+building deterministic external scorers against the same runtime contract.
 
-This repo owns the public scoring engines only:
+This repo owns:
 
 - scorer container source code
 - regression tests for each scorer
 - the GHCR publication workflow
 - scorer-repo documentation
+- shared scorer-side runtime helpers
+- external scorer reference examples
 
 It does not own:
 
@@ -41,6 +45,10 @@ relation-level scores through the aggregation mode declared by that plan.
 
 Scorers do not support retired runtime layouts or compatibility shims.
 
+External scorers use the same mounted layout and score output shape, but do not
+require `relation_plan`. They should reuse the shared runtime loader in
+`common/runtime_manifest.py` instead of re-parsing mounted files ad hoc.
+
 ## Scorers
 
 There are four scorer images:
@@ -55,13 +63,14 @@ There are four scorer images:
 ## Repo Layout
 
 ```text
-common/                shared scorer runtime loader
+common/                        shared scorer runtime helpers
 agora-scorer-table-metric/   CSV table metrics
 agora-scorer-ranking-metric/   ranking metrics
 agora-scorer-artifact-compare/     exact-match and structured-record validation
 agora-scorer-python-execution/    deterministic code execution
-docs/                  extension notes
-scripts/               local test helpers and container guards
+examples/                      external scorer templates
+docs/                          extension notes
+scripts/                       local test helpers and container guards
 ```
 
 Each scorer directory stays intentionally small:
@@ -69,6 +78,16 @@ Each scorer directory stays intentionally small:
 - `Dockerfile`
 - `score.py`
 - `test_score.py`
+
+Shared runtime helpers:
+
+- `common/runtime_manifest.py`
+  - generic manifest parsing for both `official` and `external` scorer kinds
+  - role-bound artifact resolution from `/input/evaluation/*` and `/input/submission/*`
+- `common/official_relation_plan.py`
+  - official-only relation template matching and aggregation
+- `common/runtime_test_support.py`
+  - fixture helpers for official and external scorer tests
 
 ## Code-Only Policy
 
@@ -112,7 +131,28 @@ python3 agora-scorer-table-metric/test_score.py
 python3 agora-scorer-ranking-metric/test_score.py
 python3 agora-scorer-artifact-compare/test_score.py
 python3 agora-scorer-python-execution/test_score.py
+python3 common/test_runtime_manifest.py
+python3 examples/external-minimal/test_score.py
+python3 examples/external-weighted-composite/test_score.py
 ```
+
+## External Scorer Reference Kit
+
+If you are building a custom scorer image for Agora, start here:
+
+1. Use `common/runtime_manifest.py` for the canonical mounted runtime contract.
+2. Use `common/runtime_test_support.py` to build valid local fixtures.
+3. Copy one of the external examples under `examples/`.
+4. Keep your scorer deterministic and write one `/output/score.json`.
+
+Reference examples:
+
+- `examples/external-minimal`
+  - smallest useful external scorer skeleton
+  - one evaluation role, one submission role
+- `examples/external-weighted-composite`
+  - multi-artifact external scorer
+  - weighted composite scoring with structured `details`
 
 ## CI And Publication
 

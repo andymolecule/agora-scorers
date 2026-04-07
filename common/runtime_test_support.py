@@ -11,6 +11,21 @@ def build_official_scorer(scorer_id: str) -> dict:
     }
 
 
+def build_external_scorer(
+    image: str = "ghcr.io/acme/external-scorer@sha256:test",
+) -> dict:
+    return {
+        "kind": "external",
+        "image": image,
+        "limits": {
+            "memory": "256m",
+            "cpus": "0.5",
+            "pids": 32,
+            "timeoutMs": 30_000,
+        },
+    }
+
+
 def write_runtime_payload(path: Path, payload: str | bytes) -> bytes:
     path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(payload, bytes):
@@ -72,8 +87,9 @@ def write_runtime_manifest(
     metric: str,
     comparator: str,
     artifact_contract: dict,
-    relation_plan: dict,
     artifacts: list[dict],
+    relation_plan: dict | None = None,
+    scorer_result_schema: dict | None = None,
     evaluation_bindings: list[dict] | None = None,
     policies: dict | None = None,
 ) -> dict:
@@ -83,7 +99,6 @@ def write_runtime_manifest(
         "metric": metric,
         "comparator": comparator,
         "artifact_contract": artifact_contract,
-        "relation_plan": relation_plan,
         "evaluation_bindings": evaluation_bindings or [],
         "artifacts": artifacts,
         "policies": policies
@@ -93,6 +108,14 @@ def write_runtime_manifest(
             "invalid_value_policy": "reject",
         },
     }
+    if relation_plan is not None:
+        runtime_manifest["relation_plan"] = relation_plan
+    if scorer_result_schema is not None:
+        runtime_manifest["scorer_result_schema"] = scorer_result_schema
     manifest_path = input_dir / "runtime-manifest.json"
     manifest_path.write_text(json.dumps(runtime_manifest), encoding="utf-8")
     return runtime_manifest
+
+
+def read_score_output(output_dir: Path) -> dict:
+    return json.loads((output_dir / "score.json").read_text(encoding="utf-8"))

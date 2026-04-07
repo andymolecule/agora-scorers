@@ -17,12 +17,12 @@ COMMON_DIR = SCORER_REPO_ROOT / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from runtime_contract import (
+from official_relation_plan import (
     aggregate_relation_scores,
-    load_runtime_manifest,
     require_relation_plan_template,
     resolve_relation_artifact_sets,
 )
+from runtime_manifest import load_runtime_manifest
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
