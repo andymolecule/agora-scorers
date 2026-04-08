@@ -3,19 +3,38 @@ import json
 from pathlib import Path
 
 
-def build_official_scorer(scorer_id: str) -> dict:
+def build_official_runtime_profile(
+    profile_id: str = "official_compiled_runtime",
+) -> dict:
     return {
         "kind": "official",
-        "id": scorer_id,
-        "image": f"ghcr.io/agora/{scorer_id}@sha256:test",
+        "profile_id": profile_id,
+        "image": "ghcr.io/andymolecule/agora-scorer-compiled@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "limits": {
+            "memory": "2g",
+            "cpus": "2",
+            "pids": 64,
+            "timeoutMs": 600_000,
+        },
+        "supported_step_kinds": [
+            "table_metric",
+            "ranking_metric",
+            "exact_match",
+            "rubric_validation",
+            "harness_execution",
+            "compiled_program",
+            "aggregate",
+        ],
+        "supported_program_abi_versions": ["python-v1"],
     }
 
 
-def build_external_scorer(
-    image: str = "ghcr.io/acme/external-scorer@sha256:test",
+def build_external_runtime_profile(
+    image: str = "ghcr.io/acme/external-scorer@sha256:2222222222222222222222222222222222222222222222222222222222222222",
 ) -> dict:
     return {
         "kind": "external",
+        "profile_id": "external",
         "image": image,
         "limits": {
             "memory": "256m",
@@ -23,6 +42,8 @@ def build_external_scorer(
             "pids": 32,
             "timeoutMs": 30_000,
         },
+        "supported_step_kinds": ["compiled_program"],
+        "supported_program_abi_versions": ["python-v1"],
     }
 
 
@@ -64,6 +85,35 @@ def stage_runtime_artifact(
     }
 
 
+def stage_scoring_asset(
+    input_dir: Path,
+    *,
+    role: str,
+    kind: str,
+    artifact_id: str,
+    file_name: str,
+    payload: str | bytes,
+    abi_version: str | None = None,
+    entrypoint: str | None = None,
+) -> dict:
+    asset_path = input_dir / "scoring_assets" / role / file_name
+    content_bytes = write_runtime_payload(asset_path, payload)
+    staged_asset = {
+        "role": role,
+        "kind": kind,
+        "artifact_id": artifact_id,
+        "relative_path": f"scoring_assets/{role}/{file_name}",
+        "file_name": file_name,
+        "size_bytes": len(content_bytes),
+        "sha256": hashlib.sha256(content_bytes).hexdigest(),
+    }
+    if abi_version is not None:
+        staged_asset["abi_version"] = abi_version
+    if entrypoint is not None:
+        staged_asset["entrypoint"] = entrypoint
+    return staged_asset
+
+
 def absent_runtime_artifact(
     *,
     lane: str,
@@ -83,24 +133,25 @@ def absent_runtime_artifact(
 def write_runtime_manifest(
     input_dir: Path,
     *,
-    scorer: dict,
-    metric: str,
-    comparator: str,
+    runtime_profile: dict,
     artifact_contract: dict,
     artifacts: list[dict],
-    relation_plan: dict | None = None,
+    scoring_assets: list[dict] | None = None,
+    objective: str = "maximize",
+    final_score_key: str = "final_score",
     scorer_result_schema: dict | None = None,
     evaluation_bindings: list[dict] | None = None,
     policies: dict | None = None,
 ) -> dict:
     runtime_manifest = {
         "kind": "runtime_manifest",
-        "scorer": scorer,
-        "metric": metric,
-        "comparator": comparator,
+        "runtime_profile": runtime_profile,
         "artifact_contract": artifact_contract,
         "evaluation_bindings": evaluation_bindings or [],
         "artifacts": artifacts,
+        "scoring_assets": scoring_assets or [],
+        "objective": objective,
+        "final_score_key": final_score_key,
         "policies": policies
         or {
             "coverage_policy": "reject",
@@ -108,8 +159,6 @@ def write_runtime_manifest(
             "invalid_value_policy": "reject",
         },
     }
-    if relation_plan is not None:
-        runtime_manifest["relation_plan"] = relation_plan
     if scorer_result_schema is not None:
         runtime_manifest["scorer_result_schema"] = scorer_result_schema
     manifest_path = input_dir / "runtime-manifest.json"

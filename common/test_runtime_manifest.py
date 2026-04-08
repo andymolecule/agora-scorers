@@ -2,16 +2,17 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from official_relation_plan import (
-    aggregate_relation_scores,
-    require_relation_plan_template,
-    resolve_relation_artifact_sets,
+from runtime_manifest import (
+    load_runtime_manifest,
+    resolve_artifact_by_role,
+    resolve_program_scoring_asset,
+    resolve_scoring_asset_by_role,
 )
-from runtime_manifest import load_runtime_manifest, resolve_artifact_by_role
 from runtime_test_support import (
-    build_external_scorer,
-    build_official_scorer,
+    build_external_runtime_profile,
+    build_official_runtime_profile,
     stage_runtime_artifact,
+    stage_scoring_asset,
     write_runtime_manifest,
 )
 
@@ -62,37 +63,7 @@ def build_artifact_contract() -> dict:
     }
 
 
-def build_relation_plan() -> dict:
-    return {
-        "templates": [
-            {
-                "kind": "exact_match",
-                "cardinality": "single",
-                "aggregation": "single",
-                "evaluation": [
-                    {
-                        "acceptedValidatorKinds": ["json_document"],
-                        "requiredFile": {
-                            "extension": ".json",
-                            "mimeType": "application/json",
-                        },
-                    }
-                ],
-                "submission": [
-                    {
-                        "acceptedValidatorKinds": ["json_document"],
-                        "requiredFile": {
-                            "extension": ".json",
-                            "mimeType": "application/json",
-                        },
-                    }
-                ],
-            }
-        ]
-    }
-
-
-def make_runtime_manifest(*, scorer: dict, relation_plan: dict | None) -> dict:
+def make_runtime_manifest(*, runtime_profile: dict, include_program: bool) -> dict:
     workspace = Path(tempfile.mkdtemp(prefix="agora-runtime-manifest-test-"))
     input_dir = workspace / "input"
     input_dir.mkdir()
@@ -116,15 +87,30 @@ def make_runtime_manifest(*, scorer: dict, relation_plan: dict | None) -> dict:
         validator=artifact_contract["submission"][0]["validator"],
         mime_type="application/json",
     )
+    scoring_assets = []
+    if include_program:
+        scoring_assets.append(
+            stage_scoring_asset(
+                input_dir,
+                role="compiled_program",
+                kind="program",
+                artifact_id="score.py",
+                file_name="score.py",
+                payload="print('compiled scorer smoke')\n",
+                abi_version="python-v1",
+                entrypoint="score.py",
+            )
+        )
 
     runtime_manifest = write_runtime_manifest(
         input_dir,
-        scorer=scorer,
-        metric="exact_match",
-        comparator="maximize",
+        runtime_profile=runtime_profile,
         artifact_contract=artifact_contract,
-        relation_plan=relation_plan,
         artifacts=[reference_artifact, candidate_artifact],
+        scoring_assets=scoring_assets,
+        evaluation_bindings=[{"role": "reference", "artifact_id": "artifact-ref"}],
+        objective="maximize",
+        final_score_key="final_score",
     )
     runtime_manifest["workspace"] = workspace
     return runtime_manifest
@@ -132,8 +118,8 @@ def make_runtime_manifest(*, scorer: dict, relation_plan: dict | None) -> dict:
 
 def test_external_runtime_manifest_support() -> None:
     runtime_fixture = make_runtime_manifest(
-        scorer=build_external_scorer(),
-        relation_plan=None,
+        runtime_profile=build_external_runtime_profile(),
+        include_program=False,
     )
     workspace = runtime_fixture["workspace"]
     try:
@@ -141,9 +127,9 @@ def test_external_runtime_manifest_support() -> None:
             input_dir=workspace / "input",
             fail_runtime=fail_runtime,
         )
-        assert runtime_manifest["scorer"]["kind"] == "external"
-        assert runtime_manifest["relation_plan"] is None
-        assert runtime_manifest["scorer"]["limits"]["timeoutMs"] == 30_000
+        assert runtime_manifest["runtime_profile"]["kind"] == "external"
+        assert runtime_manifest["scoring_assets"] == []
+        assert runtime_manifest["objective"] == "maximize"
 
         reference_artifact = resolve_artifact_by_role(
             runtime_manifest,
@@ -159,25 +145,14 @@ def test_external_runtime_manifest_support() -> None:
         )
         assert reference_artifact["path"] is not None
         assert candidate_artifact["path"] is not None
-
-        try:
-            require_relation_plan_template(
-                runtime_manifest,
-                kind="exact_match",
-                fail_runtime=fail_runtime,
-            )
-        except RuntimeError as error:
-            assert "scorer.kind=official" in str(error)
-        else:
-            raise AssertionError("Expected official relation helpers to reject external scorers.")
     finally:
         shutil.rmtree(workspace)
 
 
-def test_official_relation_plan_support() -> None:
+def test_official_program_scoring_asset_resolution() -> None:
     runtime_fixture = make_runtime_manifest(
-        scorer=build_official_scorer("official_exact_match"),
-        relation_plan=build_relation_plan(),
+        runtime_profile=build_official_runtime_profile(),
+        include_program=True,
     )
     workspace = runtime_fixture["workspace"]
     try:
@@ -185,33 +160,33 @@ def test_official_relation_plan_support() -> None:
             input_dir=workspace / "input",
             fail_runtime=fail_runtime,
         )
-        template = require_relation_plan_template(
+        assert runtime_manifest["runtime_profile"]["profile_id"] == "official_compiled_runtime"
+        program_asset = resolve_program_scoring_asset(
             runtime_manifest,
-            kind="exact_match",
             fail_runtime=fail_runtime,
+            supported_abi_versions={"python-v1"},
         )
-        relation_sets = resolve_relation_artifact_sets(
-            runtime_manifest,
-            template=template,
-            fail_runtime=fail_runtime,
-        )
+        config_error = None
+        try:
+            resolve_scoring_asset_by_role(
+                runtime_manifest,
+                role="compiled_config",
+                fail_runtime=fail_runtime,
+            )
+        except RuntimeError as error:
+            config_error = error
 
-        assert template["aggregation"] == "single"
-        assert len(relation_sets) == 1
-        assert relation_sets[0]["evaluation"][0]["role"] == "reference"
-        assert relation_sets[0]["submission"][0]["role"] == "candidate"
-        assert aggregate_relation_scores(
-            [1.0],
-            aggregation=template["aggregation"],
-            fail_runtime=fail_runtime,
-        ) == 1.0
+        assert program_asset["path"] is not None
+        assert program_asset["asset"]["artifact_id"] == "score.py"
+        assert config_error is not None
+        assert "compiled_config" in str(config_error)
     finally:
         shutil.rmtree(workspace)
 
 
 def main() -> None:
     test_external_runtime_manifest_support()
-    test_official_relation_plan_support()
+    test_official_program_scoring_asset_resolution()
     print("runtime manifest tests passed")
 
 

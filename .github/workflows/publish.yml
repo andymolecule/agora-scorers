@@ -1,4 +1,4 @@
-name: Publish Scorers
+name: Publish Scorer Runtime
 
 on:
   workflow_dispatch:
@@ -7,7 +7,10 @@ on:
       - main
     paths:
       - "common/**"
-      - "agora-scorer-*/**"
+      - "agora-scorer-compiled/**"
+      - "examples/**"
+      - "docs/**"
+      - "README.md"
       - ".github/workflows/publish.yml"
       - "scripts/**"
 
@@ -40,19 +43,10 @@ jobs:
     needs: test
     strategy:
       fail-fast: false
-      # Public scorer allowlist — only images registered in the Agora
-      # official scorer registry belong here. Adding an entry makes it
-      # publicly pullable on GHCR. Do not add non-catalog images.
       matrix:
         include:
-          - name: agora-scorer-artifact-compare
-            dockerfile: agora-scorer-artifact-compare/Dockerfile
-          - name: agora-scorer-table-metric
-            dockerfile: agora-scorer-table-metric/Dockerfile
-          - name: agora-scorer-ranking-metric
-            dockerfile: agora-scorer-ranking-metric/Dockerfile
-          - name: agora-scorer-python-execution
-            dockerfile: agora-scorer-python-execution/Dockerfile
+          - name: agora-scorer-compiled
+            dockerfile: agora-scorer-compiled/Dockerfile
 
     steps:
       - name: Checkout

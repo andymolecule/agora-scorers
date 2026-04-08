@@ -1,29 +1,20 @@
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
 RUNTIME_MANIFEST_FILE_NAME = "runtime-manifest.json"
+RUNTIME_EVALUATION_ROOT_DIR_NAME = "evaluation"
+RUNTIME_SUBMISSION_ROOT_DIR_NAME = "submission"
+RUNTIME_SCORING_ASSETS_ROOT_DIR_NAME = "scoring_assets"
 
 _COVERAGE_POLICIES = {"reject", "ignore", "penalize"}
 _DUPLICATE_ID_POLICIES = {"reject", "ignore"}
 _INVALID_VALUE_POLICIES = {"reject", "ignore"}
-_COMPARATORS = {"maximize", "minimize"}
-
-
-def _normalize_relative_path(value: Any, *, fail_runtime: Callable[[str], None]) -> Path:
-    if not isinstance(value, str) or not value.strip():
-        fail_runtime(
-            "Runtime manifest present artifacts must include a non-empty relative_path."
-        )
-
-    normalized = value.replace("\\", "/").strip()
-    candidate = Path(normalized)
-    if candidate.is_absolute() or ".." in candidate.parts:
-        fail_runtime(
-            f"Runtime manifest artifact path must stay within /input. Received: {value}"
-        )
-
-    return candidate
+_OBJECTIVES = {"maximize", "minimize"}
+_RUNTIME_PROFILE_KINDS = {"official", "external"}
+_SCORING_ASSET_KINDS = {"program", "config", "bundle", "document"}
+_SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 
 
 def _require_mapping(
@@ -35,6 +26,30 @@ def _require_mapping(
     value = container.get(key)
     if not isinstance(value, dict):
         fail_runtime(f"Runtime manifest {key} must be an object.")
+    return value
+
+
+def _require_list(
+    container: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> list[Any]:
+    value = container.get(key)
+    if not isinstance(value, list):
+        fail_runtime(f"Runtime manifest {key} must be an array.")
+    return value
+
+
+def _require_bool(
+    container: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> bool:
+    value = container.get(key)
+    if not isinstance(value, bool):
+        fail_runtime(f"Runtime manifest {key} must be a boolean.")
     return value
 
 
@@ -50,16 +65,42 @@ def _require_non_empty_string(
     return value.strip()
 
 
-def _require_list(
+def _require_positive_int(
     container: dict[str, Any],
     key: str,
     *,
     fail_runtime: Callable[[str], None],
-) -> list[Any]:
+) -> int:
     value = container.get(key)
-    if not isinstance(value, list):
-        fail_runtime(f"Runtime manifest {key} must be an array.")
+    if not isinstance(value, int) or value <= 0:
+        fail_runtime(f"Runtime manifest {key} must be a positive integer.")
     return value
+
+
+def _require_non_negative_int(
+    container: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> int:
+    value = container.get(key)
+    if not isinstance(value, int) or value < 0:
+        fail_runtime(f"Runtime manifest {key} must be a non-negative integer.")
+    return value
+
+
+def _require_optional_non_empty_string(
+    container: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> str | None:
+    value = container.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        fail_runtime(f"Runtime manifest {key} must be a non-empty string when present.")
+    return value.strip()
 
 
 def _require_enum_value(
@@ -81,61 +122,358 @@ def _require_enum_value(
     return value
 
 
-def _require_external_limits(
-    scorer: dict[str, Any],
+def _normalize_relative_path(
+    value: Any,
+    *,
+    expected_root: str | None = None,
+    fail_runtime: Callable[[str], None],
+) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        fail_runtime(
+            "Runtime manifest present entries must include a non-empty relative_path."
+        )
+
+    normalized = value.replace("\\", "/").strip()
+    candidate = Path(normalized)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        fail_runtime(
+            f"Runtime manifest path must stay within /input. Received: {value}"
+        )
+
+    if expected_root is not None and (
+        not candidate.parts or candidate.parts[0] != expected_root
+    ):
+        fail_runtime(
+            f"Runtime manifest path must live under /input/{expected_root}. Received: {value}"
+        )
+
+    return candidate
+
+
+def _require_validator(
+    container: dict[str, Any],
+    key: str,
     *,
     fail_runtime: Callable[[str], None],
 ) -> dict[str, Any]:
-    limits = _require_mapping(scorer, "limits", fail_runtime=fail_runtime)
-    memory = _require_non_empty_string(limits, "memory", fail_runtime=fail_runtime)
-    cpus = _require_non_empty_string(limits, "cpus", fail_runtime=fail_runtime)
-    pids = limits.get("pids")
-    timeout_ms = limits.get("timeoutMs")
-    if not isinstance(pids, int) or pids <= 0:
-        fail_runtime("Runtime manifest scorer.limits.pids must be a positive integer.")
-    if not isinstance(timeout_ms, int) or timeout_ms <= 0:
-        fail_runtime(
-            "Runtime manifest scorer.limits.timeoutMs must be a positive integer."
-        )
-    return {
-        "memory": memory,
-        "cpus": cpus,
-        "pids": pids,
-        "timeoutMs": timeout_ms,
-    }
+    validator = _require_mapping(container, key, fail_runtime=fail_runtime)
+    _require_non_empty_string(validator, "kind", fail_runtime=fail_runtime)
+    return validator
 
 
-def _require_runtime_scorer(
+def _require_runtime_profile(
     runtime_manifest: dict[str, Any],
     *,
     fail_runtime: Callable[[str], None],
 ) -> dict[str, Any]:
-    scorer = _require_mapping(runtime_manifest, "scorer", fail_runtime=fail_runtime)
-    kind = _require_enum_value(
-        scorer,
-        "kind",
-        allowed_values={"official", "external"},
+    runtime_profile = _require_mapping(
+        runtime_manifest,
+        "runtime_profile",
         fail_runtime=fail_runtime,
     )
-    image = _require_non_empty_string(scorer, "image", fail_runtime=fail_runtime)
+    kind = _require_enum_value(
+        runtime_profile,
+        "kind",
+        allowed_values=_RUNTIME_PROFILE_KINDS,
+        fail_runtime=fail_runtime,
+    )
+    profile_id = _require_non_empty_string(
+        runtime_profile,
+        "profile_id",
+        fail_runtime=fail_runtime,
+    )
+    image = _require_non_empty_string(
+        runtime_profile,
+        "image",
+        fail_runtime=fail_runtime,
+    )
+    limits = _require_mapping(runtime_profile, "limits", fail_runtime=fail_runtime)
+    supported_step_kinds = _require_list(
+        runtime_profile,
+        "supported_step_kinds",
+        fail_runtime=fail_runtime,
+    )
+    supported_program_abi_versions = _require_list(
+        runtime_profile,
+        "supported_program_abi_versions",
+        fail_runtime=fail_runtime,
+    )
 
-    normalized_scorer: dict[str, Any] = {
+    for key in supported_step_kinds:
+        if not isinstance(key, str) or not key.strip():
+            fail_runtime(
+                "Runtime manifest runtime_profile.supported_step_kinds must contain non-empty strings."
+            )
+
+    for key in supported_program_abi_versions:
+        if not isinstance(key, str) or not key.strip():
+            fail_runtime(
+                "Runtime manifest runtime_profile.supported_program_abi_versions must contain non-empty strings."
+            )
+
+    return {
         "kind": kind,
+        "profile_id": profile_id,
         "image": image,
+        "limits": {
+            "memory": _require_non_empty_string(
+                limits,
+                "memory",
+                fail_runtime=fail_runtime,
+            ),
+            "cpus": _require_non_empty_string(
+                limits,
+                "cpus",
+                fail_runtime=fail_runtime,
+            ),
+            "pids": _require_positive_int(
+                limits,
+                "pids",
+                fail_runtime=fail_runtime,
+            ),
+            "timeoutMs": _require_positive_int(
+                limits,
+                "timeoutMs",
+                fail_runtime=fail_runtime,
+            ),
+        },
+        "supported_step_kinds": [value.strip() for value in supported_step_kinds],
+        "supported_program_abi_versions": [
+            value.strip() for value in supported_program_abi_versions
+        ],
     }
-    if kind == "official":
-        normalized_scorer["id"] = _require_non_empty_string(
-            scorer,
-            "id",
+
+
+def _require_artifact_slot_list(
+    artifact_contract: dict[str, Any],
+    key: str,
+    *,
+    fail_runtime: Callable[[str], None],
+) -> list[dict[str, Any]]:
+    slots = _require_list(artifact_contract, key, fail_runtime=fail_runtime)
+    normalized: list[dict[str, Any]] = []
+    for index, raw_slot in enumerate(slots):
+        if not isinstance(raw_slot, dict):
+            fail_runtime(f"Runtime manifest artifact_contract.{key}[{index}] must be an object.")
+
+        role = _require_non_empty_string(raw_slot, "role", fail_runtime=fail_runtime)
+        normalized.append(
+            {
+                "role": role,
+                "required": _require_bool(
+                    raw_slot,
+                    "required",
+                    fail_runtime=fail_runtime,
+                ),
+                "description": _require_non_empty_string(
+                    raw_slot,
+                    "description",
+                    fail_runtime=fail_runtime,
+                ),
+                "file": _require_mapping(raw_slot, "file", fail_runtime=fail_runtime),
+                "validator": _require_validator(
+                    raw_slot,
+                    "validator",
+                    fail_runtime=fail_runtime,
+                ),
+            }
+        )
+    return normalized
+
+
+def _require_artifact_entries(
+    runtime_manifest: dict[str, Any],
+    *,
+    evaluation_slots: list[dict[str, Any]],
+    submission_slots: list[dict[str, Any]],
+    fail_runtime: Callable[[str], None],
+) -> list[dict[str, Any]]:
+    artifacts = _require_list(runtime_manifest, "artifacts", fail_runtime=fail_runtime)
+    normalized: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str]] = set()
+
+    for index, raw_artifact in enumerate(artifacts):
+        if not isinstance(raw_artifact, dict):
+            fail_runtime(f"Runtime manifest artifacts[{index}] must be an object.")
+
+        lane = _require_enum_value(
+            raw_artifact,
+            "lane",
+            allowed_values={"evaluation", "submission"},
             fail_runtime=fail_runtime,
         )
-    else:
-        normalized_scorer["limits"] = _require_external_limits(
-            scorer,
+        role = _require_non_empty_string(raw_artifact, "role", fail_runtime=fail_runtime)
+        key = (lane, role)
+        if key in seen_keys:
+            fail_runtime(
+                f"Runtime manifest must contain exactly one {lane} artifact entry for role {role}."
+            )
+        seen_keys.add(key)
+
+        present = _require_bool(raw_artifact, "present", fail_runtime=fail_runtime)
+        required = _require_bool(raw_artifact, "required", fail_runtime=fail_runtime)
+        validator = _require_validator(raw_artifact, "validator", fail_runtime=fail_runtime)
+
+        normalized_artifact: dict[str, Any] = {
+            "lane": lane,
+            "role": role,
+            "present": present,
+            "required": required,
+            "validator": validator,
+        }
+
+        if present:
+            relative_path = _normalize_relative_path(
+                raw_artifact.get("relative_path"),
+                expected_root=lane,
+                fail_runtime=fail_runtime,
+            )
+            file_name = _require_non_empty_string(
+                raw_artifact,
+                "file_name",
+                fail_runtime=fail_runtime,
+            )
+            size_bytes = _require_non_negative_int(
+                raw_artifact,
+                "size_bytes",
+                fail_runtime=fail_runtime,
+            )
+            sha256 = _require_non_empty_string(
+                raw_artifact,
+                "sha256",
+                fail_runtime=fail_runtime,
+            )
+            if not _SHA256_PATTERN.fullmatch(sha256):
+                fail_runtime(
+                    f"Runtime manifest artifacts[{index}].sha256 must be a 64-character lowercase hex string."
+                )
+
+            normalized_artifact.update(
+                {
+                    "relative_path": relative_path.as_posix(),
+                    "file_name": file_name,
+                    "mime_type": _require_optional_non_empty_string(
+                        raw_artifact,
+                        "mime_type",
+                        fail_runtime=fail_runtime,
+                    ),
+                    "size_bytes": size_bytes,
+                    "sha256": sha256,
+                }
+            )
+
+        normalized.append(normalized_artifact)
+
+    for lane, slots in (
+        ("evaluation", evaluation_slots),
+        ("submission", submission_slots),
+    ):
+        for slot in slots:
+            if (lane, slot["role"]) not in seen_keys:
+                fail_runtime(f"Runtime manifest is missing {lane} role {slot['role']}.")
+
+    return normalized
+
+
+def _require_scoring_assets(
+    runtime_manifest: dict[str, Any],
+    *,
+    fail_runtime: Callable[[str], None],
+) -> list[dict[str, Any]]:
+    scoring_assets = _require_list(
+        runtime_manifest,
+        "scoring_assets",
+        fail_runtime=fail_runtime,
+    )
+    normalized: list[dict[str, Any]] = []
+    seen_artifact_ids: set[str] = set()
+
+    for index, raw_asset in enumerate(scoring_assets):
+        if not isinstance(raw_asset, dict):
+            fail_runtime(f"Runtime manifest scoring_assets[{index}] must be an object.")
+
+        role = _require_non_empty_string(raw_asset, "role", fail_runtime=fail_runtime)
+        kind = _require_enum_value(
+            raw_asset,
+            "kind",
+            allowed_values=_SCORING_ASSET_KINDS,
+            fail_runtime=fail_runtime,
+        )
+        artifact_id = _require_non_empty_string(
+            raw_asset,
+            "artifact_id",
+            fail_runtime=fail_runtime,
+        )
+        if artifact_id in seen_artifact_ids:
+            fail_runtime(
+                f"Runtime manifest scoring_assets artifact_id {artifact_id} is duplicated."
+            )
+        seen_artifact_ids.add(artifact_id)
+
+        relative_path = _normalize_relative_path(
+            raw_asset.get("relative_path"),
+            expected_root=RUNTIME_SCORING_ASSETS_ROOT_DIR_NAME,
+            fail_runtime=fail_runtime,
+        )
+        file_name = _require_non_empty_string(
+            raw_asset,
+            "file_name",
+            fail_runtime=fail_runtime,
+        )
+        size_bytes = _require_non_negative_int(
+            raw_asset,
+            "size_bytes",
+            fail_runtime=fail_runtime,
+        )
+        sha256 = _require_non_empty_string(
+            raw_asset,
+            "sha256",
+            fail_runtime=fail_runtime,
+        )
+        if not _SHA256_PATTERN.fullmatch(sha256):
+            fail_runtime(
+                f"Runtime manifest scoring_assets[{index}].sha256 must be a 64-character lowercase hex string."
+            )
+
+        normalized_asset = {
+            "role": role,
+            "kind": kind,
+            "artifact_id": artifact_id,
+            "relative_path": relative_path.as_posix(),
+            "file_name": file_name,
+            "size_bytes": size_bytes,
+            "sha256": sha256,
+        }
+
+        abi_version = _require_optional_non_empty_string(
+            raw_asset,
+            "abi_version",
+            fail_runtime=fail_runtime,
+        )
+        entrypoint = _require_optional_non_empty_string(
+            raw_asset,
+            "entrypoint",
             fail_runtime=fail_runtime,
         )
 
-    return normalized_scorer
+        if kind == "program":
+            if not abi_version:
+                fail_runtime(
+                    f"Runtime manifest scoring_assets[{index}] kind=program must declare abi_version."
+                )
+            if not entrypoint:
+                fail_runtime(
+                    f"Runtime manifest scoring_assets[{index}] kind=program must declare entrypoint."
+                )
+
+        if abi_version is not None:
+            normalized_asset["abi_version"] = abi_version
+        if entrypoint is not None:
+            normalized_asset["entrypoint"] = entrypoint
+
+        normalized.append(normalized_asset)
+
+    return normalized
 
 
 def load_runtime_manifest(
@@ -159,7 +497,7 @@ def load_runtime_manifest(
             "Unsupported runtime manifest kind. Expected kind=runtime_manifest."
         )
 
-    scorer = _require_runtime_scorer(
+    runtime_profile = _require_runtime_profile(
         runtime_manifest,
         fail_runtime=fail_runtime,
     )
@@ -168,34 +506,28 @@ def load_runtime_manifest(
         "artifact_contract",
         fail_runtime=fail_runtime,
     )
-    evaluation_slots = _require_list(
+    evaluation_slots = _require_artifact_slot_list(
         artifact_contract,
         "evaluation",
         fail_runtime=fail_runtime,
     )
-    submission_slots = _require_list(
+    submission_slots = _require_artifact_slot_list(
         artifact_contract,
         "submission",
-        fail_runtime=fail_runtime,
-    )
-    artifacts = _require_list(
-        runtime_manifest,
-        "artifacts",
         fail_runtime=fail_runtime,
     )
     relations = artifact_contract.get("relations", [])
     if not isinstance(relations, list):
         fail_runtime("Runtime manifest artifact_contract.relations must be an array.")
 
-    metric = _require_non_empty_string(
+    artifacts = _require_artifact_entries(
         runtime_manifest,
-        "metric",
+        evaluation_slots=evaluation_slots,
+        submission_slots=submission_slots,
         fail_runtime=fail_runtime,
     )
-    comparator = _require_enum_value(
+    scoring_assets = _require_scoring_assets(
         runtime_manifest,
-        "comparator",
-        allowed_values=_COMPARATORS,
         fail_runtime=fail_runtime,
     )
 
@@ -206,10 +538,6 @@ def load_runtime_manifest(
     scorer_result_schema = runtime_manifest.get("scorer_result_schema")
     if scorer_result_schema is not None and not isinstance(scorer_result_schema, dict):
         fail_runtime("Runtime manifest scorer_result_schema must be an object.")
-
-    relation_plan = runtime_manifest.get("relation_plan")
-    if relation_plan is not None and not isinstance(relation_plan, dict):
-        fail_runtime("Runtime manifest relation_plan must be an object when present.")
 
     policies = _require_mapping(
         runtime_manifest,
@@ -236,16 +564,25 @@ def load_runtime_manifest(
     )
 
     return {
-        "metric": metric,
-        "comparator": comparator,
-        "scorer": scorer,
+        "runtime_profile": runtime_profile,
         "artifact_contract": artifact_contract,
         "evaluation_slots": evaluation_slots,
         "submission_slots": submission_slots,
         "artifacts": artifacts,
         "relations": relations,
+        "scoring_assets": scoring_assets,
         "evaluation_bindings": evaluation_bindings,
-        "relation_plan": relation_plan,
+        "objective": _require_enum_value(
+            runtime_manifest,
+            "objective",
+            allowed_values=_OBJECTIVES,
+            fail_runtime=fail_runtime,
+        ),
+        "final_score_key": _require_non_empty_string(
+            runtime_manifest,
+            "final_score_key",
+            fail_runtime=fail_runtime,
+        ),
         "scorer_result_schema": scorer_result_schema,
         "policies": {
             "coverage_policy": coverage_policy,
@@ -254,6 +591,9 @@ def load_runtime_manifest(
         },
         "input_dir": input_dir,
         "runtime_manifest_path": runtime_manifest_path,
+        "evaluation_root": input_dir / RUNTIME_EVALUATION_ROOT_DIR_NAME,
+        "submission_root": input_dir / RUNTIME_SUBMISSION_ROOT_DIR_NAME,
+        "scoring_assets_root": input_dir / RUNTIME_SCORING_ASSETS_ROOT_DIR_NAME,
     }
 
 
@@ -330,6 +670,7 @@ def resolve_artifact_by_role(
 
     relative_path = _normalize_relative_path(
         artifact.get("relative_path"),
+        expected_root=lane,
         fail_runtime=fail_runtime,
     )
     artifact_path = runtime_manifest["input_dir"] / relative_path
@@ -344,3 +685,78 @@ def resolve_artifact_by_role(
         "artifact": artifact,
         "path": artifact_path,
     }
+
+
+def resolve_scoring_asset_by_role(
+    runtime_manifest: dict[str, Any],
+    *,
+    role: str,
+    fail_runtime: Callable[[str], None],
+    kind: str | None = None,
+) -> dict[str, Any]:
+    scoring_assets = runtime_manifest.get("scoring_assets", [])
+    matches = [
+        asset
+        for asset in scoring_assets
+        if isinstance(asset, dict) and asset.get("role") == role
+    ]
+    if len(matches) != 1:
+        fail_runtime(
+            f"Runtime manifest must contain exactly one scoring asset entry for role {role}."
+        )
+
+    asset = matches[0]
+    if kind is not None and asset.get("kind") != kind:
+        fail_runtime(
+            f"Runtime manifest scoring asset {role} must use kind={kind}."
+        )
+
+    relative_path = _normalize_relative_path(
+        asset.get("relative_path"),
+        expected_root=RUNTIME_SCORING_ASSETS_ROOT_DIR_NAME,
+        fail_runtime=fail_runtime,
+    )
+    asset_path = runtime_manifest["input_dir"] / relative_path
+    if not asset_path.exists():
+        fail_runtime(
+            f"Runtime manifest scoring asset path does not exist for role {role}: {asset_path}"
+        )
+
+    return {
+        "role": role,
+        "asset": asset,
+        "path": asset_path,
+    }
+
+
+def resolve_program_scoring_asset(
+    runtime_manifest: dict[str, Any],
+    *,
+    fail_runtime: Callable[[str], None],
+    supported_abi_versions: set[str] | None = None,
+) -> dict[str, Any]:
+    scoring_assets = runtime_manifest.get("scoring_assets", [])
+    program_assets = [
+        asset
+        for asset in scoring_assets
+        if isinstance(asset, dict) and asset.get("kind") == "program"
+    ]
+
+    if len(program_assets) != 1:
+        fail_runtime(
+            "Runtime manifest must contain exactly one program scoring asset. Next step: compile one deterministic program entrypoint and retry."
+        )
+
+    program_asset = program_assets[0]
+    abi_version = program_asset.get("abi_version")
+    if supported_abi_versions is not None and abi_version not in supported_abi_versions:
+        fail_runtime(
+            f"Unsupported compiled-program ABI {abi_version}. Next step: use one of {','.join(sorted(supported_abi_versions))}."
+        )
+
+    return resolve_scoring_asset_by_role(
+        runtime_manifest,
+        role=str(program_asset.get("role")),
+        fail_runtime=fail_runtime,
+        kind="program",
+    )

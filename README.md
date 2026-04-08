@@ -1,97 +1,109 @@
 # Agora Scorers
 
-Public source for the official scorer images used by
-[Agora](https://github.com/andymolecule/Agora), plus the reference kit for
-building deterministic external scorers against the same runtime contract.
+Public source for Agora's scorer-side runtime artifacts.
 
-This repo owns:
+This repo now owns one official scorer image and the reference kit for
+deterministic external runtimes that speak the same mounted contract.
 
-- scorer container source code
-- regression tests for each scorer
-- the GHCR publication workflow
-- scorer-repo documentation
-- shared scorer-side runtime helpers
+It owns:
+
+- the official compiled runtime image source
+- scorer-side runtime manifest helpers
+- the python-v1 helper SDK for compiled programs
+- scorer regression tests
+- GHCR publication workflow
 - external scorer reference examples
 
 It does not own:
 
-- authoring flows
+- poster authoring UX
 - challenge taxonomy
-- official scorer selection in Agora
-- preset discovery
+- runtime profile selection in Agora
 - worker orchestration
 - proof publication
 - on-chain settlement
 
-Those live in the main Agora repo.
+Those remain in the main Agora repo.
 
 ## Runtime Contract
 
-Every scorer in this repo now speaks the same canonical Agora runtime contract:
+Every scorer runtime in this repo now speaks the same V2 mounted contract:
 
 - `/input/runtime-manifest.json`
 - `/input/evaluation/<role>/<filename>`
 - `/input/submission/<role>/<filename>`
+- `/input/scoring_assets/<role>/<filename>`
 - `/output/score.json`
 
-Official scorers require `runtime-manifest.json` to declare:
+The runtime manifest declares:
 
-- `scorer.kind=official`
-- the concrete official scorer `id` and pinned `image`
-- the scorer-owned `relation_plan`
+- `runtime_profile`
+- `artifact_contract`
+- `evaluation_bindings`
+- `artifacts`
+- `scoring_assets`
+- `objective`
+- `final_score_key`
+- `policies`
 
-They score one or more concrete artifact relations, then aggregate
-relation-level scores through the aggregation mode declared by that plan.
+The official image does not own metric logic, relation templates, or challenge
+taxonomy. It reads compiler-produced scoring assets and executes them. Variation
+belongs in the staged program/config bundle, not in image identity.
 
-Scorers do not support retired runtime layouts or compatibility shims.
+## Official Runtime
 
-External scorers use the same mounted layout and score output shape, but do not
-require `relation_plan`. They should reuse the shared runtime loader in
-`common/runtime_manifest.py` instead of re-parsing mounted files ad hoc.
+There is one official image:
 
-## Scorers
+| Container | Runtime profile id | What it does |
+| --- | --- | --- |
+| `agora-scorer-compiled` | `official_compiled_runtime` | Executes one staged compiled program plus any staged scoring config/bundles against the mounted runtime manifest |
 
-There are four scorer images:
+This image is the official lane for:
 
-| Container | Official scorer(s) in Agora | What it judges | Current metric(s) |
-| --- | --- | --- | --- |
-| `agora-scorer-table-metric` | `official_table_metric` | CSV predictions against hidden CSV truth | `r2`, `rmse`, `mae`, `pearson`, `spearman`, `accuracy`, `f1` |
-| `agora-scorer-ranking-metric` | `official_ranking_metric` | ranked CSV outputs against hidden relevance labels | `ndcg`, `spearman` |
-| `agora-scorer-artifact-compare` | `official_exact_match`, `official_structured_validation` | exact file match and structured JSON validation | `exact_match`, `validation_score` |
-| `agora-scorer-python-execution` | `official_python_execution` | Python code run against a hidden deterministic harness | `pass_rate` |
+- `table_metric`
+- `ranking_metric`
+- `exact_match`
+- `rubric_validation`
+- `harness_execution`
+- `compiled_program`
+- `aggregate`
+
+The image stays stable. The compiler changes the staged `score.py` and related
+config per challenge.
 
 ## Repo Layout
 
 ```text
-common/                        shared scorer runtime helpers
-agora-scorer-table-metric/   CSV table metrics
-agora-scorer-ranking-metric/   ranking metrics
-agora-scorer-artifact-compare/     exact-match and structured-record validation
-agora-scorer-python-execution/    deterministic code execution
-examples/                      external scorer templates
-docs/                          extension notes
-scripts/                       local test helpers and container guards
+common/                     shared scorer runtime helpers
+agora-scorer-compiled/      official compiled runtime image
+examples/                   external scorer reference examples
+docs/                       scorer-side extension notes
+scripts/                    local test helpers and container guards
 ```
-
-Each scorer directory stays intentionally small:
-
-- `Dockerfile`
-- `score.py`
-- `test_score.py`
 
 Shared runtime helpers:
 
 - `common/runtime_manifest.py`
-  - generic manifest parsing for both `official` and `external` scorer kinds
-  - role-bound artifact resolution from `/input/evaluation/*` and `/input/submission/*`
-- `common/official_relation_plan.py`
-  - official-only relation template matching and aggregation
+  - V2 runtime manifest parsing
+  - role-bound artifact resolution
+  - scoring-asset resolution
 - `common/runtime_test_support.py`
-  - fixture helpers for official and external scorer tests
+  - local fixture helpers for official and external tests
+
+Official runtime files:
+
+- `agora-scorer-compiled/entrypoint.py`
+  - validates the official runtime profile
+  - discovers the staged program scoring asset
+  - sets ABI environment variables and executes the staged program
+- `agora-scorer-compiled/sdk/agora_runtime.py`
+  - helper SDK for compiled programs running under `python-v1`
+- `agora-scorer-compiled/test_score.py`
+  - scorer regression tests for the official compiled runtime
 
 ## Code-Only Policy
 
-Official scorer images must stay public and code-only. This repo must not ship:
+Official runtime images must stay public and code-only. This repo must not ship:
 
 - hidden evaluation labels
 - private reference outputs
@@ -99,22 +111,22 @@ Official scorer images must stay public and code-only. This repo must not ship:
 - harness payloads
 - large embedded assets
 
-Those belong in the mounted evaluation artifact, not in the image. The guard in [`scripts/check-scorer-containers.mjs`](./scripts/check-scorer-containers.mjs) enforces that policy.
+Those belong in mounted evaluation artifacts or scoring assets, not in the
+image. The guard in `scripts/check-scorer-containers.mjs` enforces that rule.
 
-## Published Images
+## Published Image
 
-Images publish to `ghcr.io/andymolecule/`.
+The official runtime publishes to `ghcr.io/andymolecule/`.
 
 Convenience tags:
 
 ```bash
-docker pull ghcr.io/andymolecule/agora-scorer-table-metric:latest
-docker pull ghcr.io/andymolecule/agora-scorer-ranking-metric:latest
-docker pull ghcr.io/andymolecule/agora-scorer-artifact-compare:latest
-docker pull ghcr.io/andymolecule/agora-scorer-python-execution:latest
+docker pull ghcr.io/andymolecule/agora-scorer-compiled:latest
+docker pull ghcr.io/andymolecule/agora-scorer-compiled:sha-<git-commit>
 ```
 
-Agora itself binds official scorers to immutable digests, not floating tags.
+Agora itself must bind the runtime profile to an immutable digest, not a
+floating tag.
 
 ## Local Development
 
@@ -124,13 +136,10 @@ Run all scorer regression tests:
 bash scripts/run-scorer-tests.sh
 ```
 
-Run one scorer directly:
+Run specific tests directly:
 
 ```bash
-python3 agora-scorer-table-metric/test_score.py
-python3 agora-scorer-ranking-metric/test_score.py
-python3 agora-scorer-artifact-compare/test_score.py
-python3 agora-scorer-python-execution/test_score.py
+python3 agora-scorer-compiled/test_score.py
 python3 common/test_runtime_manifest.py
 python3 examples/external-minimal/test_score.py
 python3 examples/external-weighted-composite/test_score.py
@@ -138,17 +147,18 @@ python3 examples/external-weighted-composite/test_score.py
 
 ## External Scorer Reference Kit
 
-If you are building a custom scorer image for Agora, start here:
+If you are building a custom external runtime for Agora:
 
-1. Use `common/runtime_manifest.py` for the canonical mounted runtime contract.
-2. Use `common/runtime_test_support.py` to build valid local fixtures.
-3. Copy one of the external examples under `examples/`.
-4. Keep your scorer deterministic and write one `/output/score.json`.
+1. Reuse `common/runtime_manifest.py`.
+2. Reuse `common/runtime_test_support.py`.
+3. Start from one of the examples under `examples/`.
+4. Keep scoring deterministic.
+5. Write one `/output/score.json`.
 
 Reference examples:
 
 - `examples/external-minimal`
-  - smallest useful external scorer skeleton
+  - smallest external scorer skeleton
   - one evaluation role, one submission role
 - `examples/external-weighted-composite`
   - multi-artifact external scorer
@@ -159,26 +169,17 @@ Reference examples:
 The publish workflow:
 
 - runs scorer regression tests
-- checks that scorer images remain code-only
+- checks that the official runtime image stays code-only
 - builds multi-arch images for `linux/amd64` and `linux/arm64`
 - publishes `:latest` and `:sha-<git-commit>` tags to GHCR
 
-The Docker build context is the scorer repo root so the shared runtime loader in `common/` is available to every scorer image.
-
-## Adding A New Official Scorer
-
-Normal path:
-
-1. Add or update scorer code in this repo.
-2. Publish the scorer image.
-3. Register the scorer and any authoring preset in the main Agora repo.
-4. Add any new shared artifact schema in the main Agora repo if needed.
-5. Add tests in both repos.
+The Docker build context is the repo root so the shared runtime helpers in
+`common/` are available to the image.
 
 ## Related Links
 
 - [Agora main repo](https://github.com/andymolecule/Agora)
-- [Official scorer registry](https://github.com/andymolecule/Agora/blob/main/packages/common/src/official-scorer-registry.ts)
-- [Authoring preset registry](https://github.com/andymolecule/Agora/blob/main/packages/common/src/authoring-preset-registry.ts)
+- [Runtime profile registry](https://github.com/andymolecule/Agora/blob/main/packages/common/src/runtime-profile-registry.ts)
+- [Poster/scorer V2 contract](https://github.com/andymolecule/Agora/blob/main/docs/specs/poster-scorer-v2-contract.md)
 - [Agora protocol](https://github.com/andymolecule/Agora/blob/main/docs/protocol.md)
 - [Scoring extension guide](./docs/scoring-engines.md)

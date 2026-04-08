@@ -123,9 +123,9 @@ def main() -> None:
         input_dir=INPUT_DIR,
         fail_runtime=fail_runtime,
     )
-    if runtime_manifest["scorer"]["kind"] != "external":
+    if runtime_manifest["runtime_profile"]["kind"] != "external":
         fail_runtime(
-            "This example scorer requires scorer.kind=external. Next step: use an external runtime manifest and retry."
+            "This example scorer requires runtime_profile.kind=external. Next step: use an external runtime manifest and retry."
         )
 
     weights_artifact = resolve_artifact_by_role(

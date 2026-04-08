@@ -6,12 +6,7 @@ const maxEmbeddedAssetBytes = 1_000_000;
 const disallowedAssetPattern =
   /\.(csv|tsv|jsonl|parquet|arrow|feather|npy|npz|pt|pth|ckpt|onnx|pkl|pickle|joblib|bin|h5|hdf5|tar|tgz|gz|bz2|xz|zip)$/i;
 
-const scorerDirs = [
-  "agora-scorer-artifact-compare",
-  "agora-scorer-table-metric",
-  "agora-scorer-ranking-metric",
-  "agora-scorer-python-execution",
-];
+const scorerDirs = ["agora-scorer-compiled"];
 
 function fail(message) {
   throw new Error(

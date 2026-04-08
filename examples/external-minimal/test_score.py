@@ -12,7 +12,7 @@ if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
 from runtime_test_support import (
-    build_external_scorer,
+    build_external_runtime_profile,
     read_score_output,
     stage_runtime_artifact,
     write_runtime_manifest,
@@ -104,12 +104,12 @@ def run_case(*, rubric_payload: str, submission_payload: str):
     )
     write_runtime_manifest(
         input_dir,
-        scorer=build_external_scorer(),
-        metric="custom_correctness",
-        comparator="maximize",
+        runtime_profile=build_external_runtime_profile(),
         artifact_contract=artifact_contract,
         scorer_result_schema=build_scorer_result_schema(),
         artifacts=[rubric_artifact, candidate_artifact],
+        objective="maximize",
+        final_score_key="correctness_score",
     )
 
     module.INPUT_DIR = input_dir
