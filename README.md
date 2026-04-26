@@ -9,7 +9,6 @@ It owns:
 
 - the official compiled runtime image source
 - scorer-side runtime manifest helpers
-- the python-v1 helper SDK for compiled programs
 - scorer regression tests
 - GHCR publication workflow
 - external scorer reference examples
@@ -18,6 +17,7 @@ It does not own:
 
 - poster authoring UX
 - challenge taxonomy
+- the python-v1 helper SDK for compiled programs
 - runtime profile selection in Agora
 - worker orchestration
 - proof publication
@@ -46,9 +46,10 @@ The runtime manifest declares:
 - `final_score_key`
 - `policies`
 
-The official image does not own metric logic, relation templates, or challenge
-taxonomy. It reads compiler-produced scoring assets and executes them. Variation
-belongs in the staged program/config bundle, not in image identity.
+The official image does not own metric logic, relation templates, challenge
+taxonomy, or the `python-v1` helper SDK. It reads compiler-produced scoring
+assets and executes them. Variation belongs in staged scoring assets, not in
+image identity.
 
 ## Official Runtime
 
@@ -95,9 +96,9 @@ Official runtime files:
 - `agora-scorer-compiled/entrypoint.py`
   - validates the official runtime profile
   - discovers the staged program scoring asset
+  - discovers the staged `python_v1_runtime_sdk` document asset first in
+    `PYTHONPATH`
   - sets ABI environment variables and executes the staged program
-- `agora-scorer-compiled/sdk/agora_runtime.py`
-  - helper SDK for compiled programs running under `python-v1`
 - `agora-scorer-compiled/test_score.py`
   - scorer regression tests for the official compiled runtime
 

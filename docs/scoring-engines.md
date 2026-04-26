@@ -70,14 +70,17 @@ It owns:
 - validating `runtime_profile.kind=official`
 - validating the official runtime profile id
 - discovering the single staged program scoring asset
+- discovering the staged `python_v1_runtime_sdk` document asset
 - exporting the python-v1 environment seam
 - executing the staged compiled program
 
-It must not re-implement challenge-specific scoring logic.
+It must not re-implement challenge-specific scoring logic or own the
+`python-v1` helper SDK.
 
-### `agora-scorer-compiled/sdk/agora_runtime.py`
+### `python_v1_runtime_sdk` scoring asset
 
-The helper SDK for compiled programs.
+The helper SDK for compiled programs is a staged scoring asset owned by the
+main Agora repo.
 
 It owns:
 
@@ -87,8 +90,9 @@ It owns:
 - deterministic `write_score()`
 - submission rejection vs runtime failure helpers
 
-Compiled programs should prefer this helper SDK over re-parsing the runtime
-manifest ad hoc.
+Compiled programs import `agora_runtime` from the staged scoring asset. This
+image prepends that asset directory to `PYTHONPATH`; it does not bake a copy of
+the SDK.
 
 ### `examples/external-*`
 
