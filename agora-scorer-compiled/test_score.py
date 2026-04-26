@@ -68,7 +68,7 @@ def build_artifact_contract() -> dict:
 
 def build_sdk_program_source(mode: str) -> str:
     return f"""
-from sdk.agora_runtime import (
+from agora_runtime import (
     load_json_file,
     load_runtime_context,
     reject_submission,
@@ -117,12 +117,95 @@ if __name__ == "__main__":
 """.strip()
 
 
+def build_runtime_sdk_fixture_source() -> str:
+    return r"""
+import json
+import os
+from pathlib import Path
+
+from runtime_manifest import (
+    load_runtime_manifest,
+    resolve_artifact_by_role,
+    resolve_scoring_asset_by_role,
+)
+
+
+def _output_path():
+    return Path(os.environ["AGORA_RUNTIME_OUTPUT_ROOT"]) / "score.json"
+
+
+def _write_payload(payload):
+    output_path = _output_path()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+
+def fail_runtime(message, *, details=None):
+    _write_payload({"ok": False, "score": 0.0, "error": message, "details": details or {}})
+    raise SystemExit(1)
+
+
+def reject_submission(message, *, details=None):
+    _write_payload({"ok": False, "score": 0.0, "error": message, "details": details or {}})
+    raise SystemExit(0)
+
+
+def write_score(*, score, details=None):
+    _write_payload({"ok": True, "score": score, "details": details or {}})
+
+
+def load_runtime_context():
+    return load_runtime_manifest(
+        input_dir=Path(os.environ["AGORA_RUNTIME_INPUT_ROOT"]),
+        fail_runtime=fail_runtime,
+    )
+
+
+def resolve_evaluation_artifact(runtime_context, role):
+    return resolve_artifact_by_role(
+        runtime_context,
+        lane="evaluation",
+        role=role,
+        fail_runtime=fail_runtime,
+    )["path"]
+
+
+def resolve_submission_artifact(runtime_context, role):
+    return resolve_artifact_by_role(
+        runtime_context,
+        lane="submission",
+        role=role,
+        fail_runtime=fail_runtime,
+    )["path"]
+
+
+def resolve_scoring_asset(runtime_context, role, *, kind=None):
+    return resolve_scoring_asset_by_role(
+        runtime_context,
+        role=role,
+        kind=kind,
+        fail_runtime=fail_runtime,
+    )["path"]
+
+
+def load_json_file(path, *, label="JSON file"):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        fail_runtime(f"{label} is not valid JSON: {exc}")
+""".strip()
+
+
 def run_case(
     *,
     runtime_profile: dict,
     reference_payload: str,
     candidate_payload: str,
     include_program_asset: bool = True,
+    include_runtime_sdk_asset: bool = True,
     config_payload: str = '{"mode": "weighted_composite"}',
 ):
     module = load_scorer_module()
@@ -161,6 +244,17 @@ def run_case(
             payload=config_payload,
         )
     ]
+    if include_runtime_sdk_asset:
+        scoring_assets.append(
+            stage_scoring_asset(
+                input_dir,
+                role="python_v1_runtime_sdk",
+                kind="document",
+                artifact_id="agora_runtime.py",
+                file_name="agora_runtime.py",
+                payload=build_runtime_sdk_fixture_source(),
+            )
+        )
     if include_program_asset:
         scoring_assets.insert(
             0,
@@ -245,6 +339,16 @@ def main() -> None:
     assert exit_code == 1, exit_code
     assert payload is not None
     assert "exactly one program scoring asset" in payload["error"], payload
+
+    exit_code, payload = run_case(
+        runtime_profile=build_official_runtime_profile(),
+        reference_payload=json.dumps({"answer": "pep-1"}),
+        candidate_payload=json.dumps({"answer": "pep-1"}),
+        include_runtime_sdk_asset=False,
+    )
+    assert exit_code == 1, exit_code
+    assert payload is not None
+    assert "python_v1_runtime_sdk" in payload["error"], payload
 
     exit_code, payload = run_case(
         runtime_profile=build_external_runtime_profile(),

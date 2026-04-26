@@ -11,6 +11,6 @@ COPY common /app/common
 COPY agora-scorer-compiled /app/agora-scorer-compiled
 
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/common:/app/agora-scorer-compiled:/app/agora-scorer-compiled/sdk
+ENV PYTHONPATH=/app/common:/app/agora-scorer-compiled
 
 CMD ["python", "/app/agora-scorer-compiled/entrypoint.py"]

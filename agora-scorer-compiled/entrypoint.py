@@ -9,13 +9,19 @@ COMMON_DIR = SCORER_REPO_ROOT / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from runtime_manifest import load_runtime_manifest, resolve_program_scoring_asset
+from runtime_manifest import (
+    load_runtime_manifest,
+    resolve_program_scoring_asset,
+    resolve_scoring_asset_by_role,
+)
 
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
 OUTPUT_PATH = OUTPUT_DIR / "score.json"
 SUPPORTED_OFFICIAL_PROFILE_ID = "official_compiled_runtime"
 SUPPORTED_PROGRAM_ABI_VERSIONS = {"python-v1"}
+PYTHON_V1_RUNTIME_SDK_ROLE = "python_v1_runtime_sdk"
+PYTHON_V1_RUNTIME_SDK_FILE_NAME = "agora_runtime.py"
 
 
 def write_result(payload: dict) -> None:
@@ -43,11 +49,28 @@ def require_official_runtime(runtime_manifest: dict) -> None:
         )
 
 
-def build_program_env(runtime_manifest: dict, program_asset: dict) -> dict[str, str]:
+def resolve_python_v1_runtime_sdk(runtime_manifest: dict) -> Path:
+    sdk_asset = resolve_scoring_asset_by_role(
+        runtime_manifest,
+        role=PYTHON_V1_RUNTIME_SDK_ROLE,
+        kind="document",
+        fail_runtime=fail_runtime,
+    )
+    sdk_path = sdk_asset["path"]
+    if sdk_path.name != PYTHON_V1_RUNTIME_SDK_FILE_NAME:
+        fail_runtime(
+            f"Runtime manifest {PYTHON_V1_RUNTIME_SDK_ROLE} asset must be named {PYTHON_V1_RUNTIME_SDK_FILE_NAME}. Next step: stage the python-v1 runtime SDK as {PYTHON_V1_RUNTIME_SDK_FILE_NAME} and retry."
+        )
+    return sdk_path.parent
+
+
+def build_program_env(
+    runtime_manifest: dict, program_asset: dict, runtime_sdk_dir: Path
+) -> dict[str, str]:
     python_path_entries = [
+        str(runtime_sdk_dir),
         str(COMMON_DIR),
         str(SCORER_REPO_ROOT / "agora-scorer-compiled"),
-        str(SCORER_REPO_ROOT / "agora-scorer-compiled" / "sdk"),
     ]
     existing_python_path = os.environ.get("PYTHONPATH", "").strip()
     if existing_python_path:
@@ -90,12 +113,13 @@ def main() -> None:
         fail_runtime=fail_runtime,
         supported_abi_versions=SUPPORTED_PROGRAM_ABI_VERSIONS,
     )
+    runtime_sdk_dir = resolve_python_v1_runtime_sdk(runtime_manifest)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run = subprocess.run(
         [sys.executable, str(program_asset["path"])],
         cwd=str(program_asset["path"].parent),
-        env=build_program_env(runtime_manifest, program_asset),
+        env=build_program_env(runtime_manifest, program_asset, runtime_sdk_dir),
         check=False,
     )
     if run.returncode != 0:
