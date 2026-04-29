@@ -188,22 +188,11 @@ def _require_runtime_profile(
         fail_runtime=fail_runtime,
     )
     limits = _require_mapping(runtime_profile, "limits", fail_runtime=fail_runtime)
-    supported_step_kinds = _require_list(
-        runtime_profile,
-        "supported_step_kinds",
-        fail_runtime=fail_runtime,
-    )
     supported_program_abi_versions = _require_list(
         runtime_profile,
         "supported_program_abi_versions",
         fail_runtime=fail_runtime,
     )
-
-    for key in supported_step_kinds:
-        if not isinstance(key, str) or not key.strip():
-            fail_runtime(
-                "Runtime manifest runtime_profile.supported_step_kinds must contain non-empty strings."
-            )
 
     for key in supported_program_abi_versions:
         if not isinstance(key, str) or not key.strip():
@@ -237,7 +226,6 @@ def _require_runtime_profile(
                 fail_runtime=fail_runtime,
             ),
         },
-        "supported_step_kinds": [value.strip() for value in supported_step_kinds],
         "supported_program_abi_versions": [
             value.strip() for value in supported_program_abi_versions
         ],

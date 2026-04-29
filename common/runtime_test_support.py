@@ -16,15 +16,6 @@ def build_official_runtime_profile(
             "pids": 64,
             "timeoutMs": 600_000,
         },
-        "supported_step_kinds": [
-            "table_metric",
-            "ranking_metric",
-            "exact_match",
-            "rubric_validation",
-            "harness_execution",
-            "compiled_program",
-            "aggregate",
-        ],
         "supported_program_abi_versions": ["python-v1"],
     }
 
@@ -42,7 +33,6 @@ def build_external_runtime_profile(
             "pids": 32,
             "timeoutMs": 30_000,
         },
-        "supported_step_kinds": ["compiled_program"],
         "supported_program_abi_versions": ["python-v1"],
     }
 
