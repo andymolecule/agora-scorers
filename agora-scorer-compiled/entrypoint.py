@@ -18,7 +18,6 @@ from runtime_manifest import (
 INPUT_DIR = Path("/input")
 OUTPUT_DIR = Path("/output")
 OUTPUT_PATH = OUTPUT_DIR / "score.json"
-SUPPORTED_OFFICIAL_PROFILE_ID = "official_compiled_runtime"
 SUPPORTED_PROGRAM_ABI_VERSIONS = {"python-v1"}
 PYTHON_V1_RUNTIME_SDK_ROLE = "python_v1_runtime_sdk"
 PYTHON_V1_RUNTIME_SDK_FILE_NAME = "agora_runtime.py"
@@ -42,10 +41,6 @@ def require_official_runtime(runtime_manifest: dict) -> None:
     if runtime_profile["kind"] != "official":
         fail_runtime(
             "agora-scorer-compiled requires runtime_profile.kind=official. Next step: run this image only for the official compiled runtime lane."
-        )
-    if runtime_profile["profile_id"] != SUPPORTED_OFFICIAL_PROFILE_ID:
-        fail_runtime(
-            f"agora-scorer-compiled only supports runtime_profile.profile_id={SUPPORTED_OFFICIAL_PROFILE_ID}."
         )
 
 
