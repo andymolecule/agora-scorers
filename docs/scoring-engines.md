@@ -152,6 +152,7 @@ It should prove:
 - Keep images code-only.
 - Keep scorer logic deterministic.
 - Keep runtime parsing centralized.
+- Keep the deterministic process environment owned by `runtime_profile`.
 - Keep challenge semantics out of this repo.
 - Keep one official image unless the dependency envelope changes materially.
 - Keep the compiled-program ABI explicit and stable.
@@ -182,6 +183,9 @@ The image published from this repo executes one staged compiled program per
 invocation. It receives mounted inputs via the V2 contract, runs the
 deterministic scoring logic, and writes `/output/score.json`. It has no
 knowledge of queue depth, retries, or downstream consumers.
+The entrypoint applies `runtime_profile.determinism_env` before launching the
+compiled program so local execution and public replay use the same profile-owned
+environment.
 
 ### Why the separation matters
 
@@ -195,7 +199,8 @@ The publish workflow in this repo (`.github/workflows/publish.yml`) produces
 the image and emits a release artifact (`official-runtime-release.json`) with
 the explicit handoff fields the main repo needs: `profile_id`, `image_ref`,
 `digest`, `tags`, `platforms`, `runtime_manifest_schema_sha256`,
-`supported_program_abi_versions`, and scorer-repo `commit`. The same contract
-facts are stamped onto the image as OCI labels. The main repo deployment
-pipeline consumes that immutable handoff to update its runtime profile
-registry, closing the loop without coupling the two repos' release cadences.
+`supported_program_abi_versions`, `determinism_env_sha256`, and scorer-repo
+`commit`. The same contract facts are stamped onto the image as OCI labels. The
+main repo deployment pipeline consumes that immutable handoff to update its
+runtime profile registry, closing the loop without coupling the two repos'
+release cadences.

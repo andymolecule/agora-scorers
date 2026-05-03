@@ -73,6 +73,7 @@ const runtimeProfileSchema = z
       })
       .strict(),
     supported_program_abi_versions: z.array(trimmedStringSchema).default([]),
+    determinism_env: z.record(trimmedStringSchema),
   })
   .strict();
 

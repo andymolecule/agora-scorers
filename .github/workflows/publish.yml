@@ -28,7 +28,6 @@ permissions:
 
 env:
   GHCR_NAMESPACE: moleculeprotocol
-  OFFICIAL_RUNTIME_PROFILE_ID: official_compiled_runtime
 
 jobs:
   test:
@@ -84,6 +83,9 @@ jobs:
         include:
           - name: agora-scorer-compiled
             dockerfile: agora-scorer-compiled/Dockerfile
+            profile_id: official_compiled_runtime
+            supported_program_abi_versions: python-v1
+            determinism_env_json: '{"LANG":"C.UTF-8","LC_ALL":"C.UTF-8","PYTHONHASHSEED":"0","SOURCE_DATE_EPOCH":"0","TZ":"UTC"}'
 
     steps:
       - name: Checkout
@@ -98,10 +100,13 @@ jobs:
             echo "Canonical runtime manifest schema hash mismatch. Next step: revendor the Agora main artifact and update schema/scorer-runtime-manifest.canonical.sha256." >&2
             exit 1
           fi
+          determinism_env_json='${{ matrix.determinism_env_json }}'
+          determinism_env_sha256="$(printf '%s' "${determinism_env_json}" | sha256sum | cut -d ' ' -f1)"
 
           {
             echo "runtime_manifest_schema_sha256=${runtime_manifest_schema_sha256}"
-            echo "supported_program_abi_versions=python-v1"
+            echo "supported_program_abi_versions=${{ matrix.supported_program_abi_versions }}"
+            echo "determinism_env_sha256=${determinism_env_sha256}"
             echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
 
@@ -133,6 +138,7 @@ jobs:
           labels: |
             agora.runtime-manifest-schema-sha256=${{ steps.contract-metadata.outputs.runtime_manifest_schema_sha256 }}
             agora.python-program-abi=${{ steps.contract-metadata.outputs.supported_program_abi_versions }}
+            agora.determinism-env-sha256=${{ steps.contract-metadata.outputs.determinism_env_sha256 }}
 
       - name: Attest ${{ matrix.name }} image provenance
         id: attest
@@ -151,7 +157,7 @@ jobs:
 
           cat <<EOF > official-runtime-release.json
           {
-            "profile_id": "${{ env.OFFICIAL_RUNTIME_PROFILE_ID }}",
+            "profile_id": "${{ matrix.profile_id }}",
             "image": "ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}",
             "image_ref": "ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}@${{ steps.build-push.outputs.digest }}",
             "digest": "${{ steps.build-push.outputs.digest }}",
@@ -159,6 +165,7 @@ jobs:
             "platforms": ["linux/amd64", "linux/arm64"],
             "runtime_manifest_schema_sha256": "${{ steps.contract-metadata.outputs.runtime_manifest_schema_sha256 }}",
             "supported_program_abi_versions": ["${{ steps.contract-metadata.outputs.supported_program_abi_versions }}"],
+            "determinism_env_sha256": "${{ steps.contract-metadata.outputs.determinism_env_sha256 }}",
             "provenance": {
               "predicate_type": "https://slsa.dev/provenance/v1",
               "subject_name": "ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}",

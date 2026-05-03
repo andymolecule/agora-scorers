@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import yaml from "yaml";
@@ -23,6 +24,15 @@ import {
 import { resolvePinnedImage, runScorerContainer } from "./docker.js";
 import { readRuntimeManifestSchemaSha256 } from "./schema-hash.js";
 import { stageReplayWorkspace } from "./stage.js";
+
+export function computeDeterminismEnvSha256(determinismEnv) {
+  const canonical = Object.fromEntries(
+    Object.entries(determinismEnv).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
 
 function findProgramAbiVersion(programAssets) {
   if (programAssets.length !== 1) {
@@ -162,6 +172,7 @@ export async function replayProof(options) {
       inputDir: workspace.inputDir,
       outputPath: workspace.outputPath,
       limits: challengeSpec.execution.runtime_profile.limits,
+      determinismEnv: challengeSpec.execution.runtime_profile.determinism_env,
     });
 
     const outputText = await fs.readFile(workspace.outputPath, "utf8");
@@ -238,6 +249,9 @@ export async function replayProof(options) {
       runtime_profile_id: challengeSpec.execution.runtime_profile.profile_id,
       image_digest: proof.containerImageDigest,
       runtime_manifest_schema_sha256: runtimeManifestSchemaSha256,
+      determinism_env_sha256: computeDeterminismEnvSha256(
+        challengeSpec.execution.runtime_profile.determinism_env,
+      ),
       program_abi_version: programAbiVersion,
       supported_program_abi_versions: SUPPORTED_PROGRAM_ABI_VERSIONS,
       abi_supported: abiSupported,

@@ -72,6 +72,7 @@ def build_program_env(
         python_path_entries.append(existing_python_path)
 
     environment = os.environ.copy()
+    environment.update(runtime_manifest["runtime_profile"]["determinism_env"])
     environment["PYTHONPATH"] = ":".join(python_path_entries)
     environment["AGORA_RUNTIME_MANIFEST_PATH"] = str(
         runtime_manifest["runtime_manifest_path"]

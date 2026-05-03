@@ -56,6 +56,25 @@ assertEqual(
   "mode=max",
   "docker/build-push-action provenance mode",
 );
+const matrixRows = publishJob.strategy?.matrix?.include ?? [];
+const compiledRuntimeRow = matrixRows.find(
+  (row) => row.name === "agora-scorer-compiled",
+);
+assertEqual(
+  compiledRuntimeRow?.profile_id,
+  "official_compiled_runtime",
+  "compiled runtime matrix profile_id",
+);
+assertEqual(
+  compiledRuntimeRow?.supported_program_abi_versions,
+  "python-v1",
+  "compiled runtime matrix ABI list",
+);
+assertEqual(
+  compiledRuntimeRow?.determinism_env_json,
+  '{"LANG":"C.UTF-8","LC_ALL":"C.UTF-8","PYTHONHASHSEED":"0","SOURCE_DATE_EPOCH":"0","TZ":"UTC"}',
+  "compiled runtime matrix determinism env",
+);
 
 const attestStep = findStep(publishJob, "Attest ${{ matrix.name }} image provenance");
 assertEqual(
@@ -77,6 +96,8 @@ assertEqual(attestStep.with?.["push-to-registry"], true, "attestation registry p
 
 const exportStep = findStep(publishJob, "Export release metadata");
 const releaseArtifactFields = [
+  '"profile_id": "${{ matrix.profile_id }}"',
+  '"determinism_env_sha256": "${{ steps.contract-metadata.outputs.determinism_env_sha256 }}"',
   '"provenance"',
   '"predicate_type": "https://slsa.dev/provenance/v1"',
   '"subject_name": "ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ matrix.name }}"',

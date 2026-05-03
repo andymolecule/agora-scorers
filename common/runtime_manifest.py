@@ -161,6 +161,30 @@ def _require_validator(
     return validator
 
 
+def _require_determinism_env(
+    runtime_profile: dict[str, Any],
+    *,
+    fail_runtime: Callable[[str], None],
+) -> dict[str, str]:
+    determinism_env = runtime_profile.get("determinism_env")
+    if not isinstance(determinism_env, dict):
+        fail_runtime(
+            "Runtime manifest runtime_profile.determinism_env must be an object."
+        )
+    normalized: dict[str, str] = {}
+    for name, value in determinism_env.items():
+        if not isinstance(name, str) or not name.strip():
+            fail_runtime(
+                "Runtime manifest runtime_profile.determinism_env keys must be non-empty strings."
+            )
+        if not isinstance(value, str) or not value:
+            fail_runtime(
+                f"Runtime manifest runtime_profile.determinism_env.{name} must be a non-empty string."
+            )
+        normalized[name.strip()] = value
+    return normalized
+
+
 def _require_runtime_profile(
     runtime_manifest: dict[str, Any],
     *,
@@ -231,6 +255,10 @@ def _require_runtime_profile(
         "supported_program_abi_versions": [
             value.strip() for value in supported_program_abi_versions
         ],
+        "determinism_env": _require_determinism_env(
+            runtime_profile,
+            fail_runtime=fail_runtime,
+        ),
     }
 
 
@@ -742,6 +770,14 @@ def resolve_program_scoring_asset(
     if supported_abi_versions is not None and abi_version not in supported_abi_versions:
         fail_runtime(
             f"Unsupported compiled-program ABI {abi_version}. Next step: use one of {','.join(sorted(supported_abi_versions))}."
+        )
+    profile_supported_abi_versions = runtime_manifest["runtime_profile"].get(
+        "supported_program_abi_versions",
+        [],
+    )
+    if abi_version not in profile_supported_abi_versions:
+        fail_runtime(
+            f"Runtime profile {runtime_manifest['runtime_profile']['profile_id']} does not support compiled-program ABI {abi_version}. Next step: rebuild the runtime manifest with a profile that supports this program ABI."
         )
 
     return resolve_scoring_asset_by_role(

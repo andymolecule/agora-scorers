@@ -17,6 +17,13 @@ def build_official_runtime_profile(
             "timeoutMs": 600_000,
         },
         "supported_program_abi_versions": ["python-v1"],
+        "determinism_env": {
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONHASHSEED": "0",
+            "SOURCE_DATE_EPOCH": "0",
+            "TZ": "UTC",
+        },
     }
 
 
