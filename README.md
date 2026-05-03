@@ -44,6 +44,7 @@ monorepo.
 The output includes:
 
 - `runtime_manifest_schema_sha256`
+- `determinism_env_sha256`
 - `supported_program_abi_versions`
 - `program_abi_version`
 - `score_matches`
@@ -90,6 +91,11 @@ There is one official image:
 | --- | --- | --- |
 | `agora-scorer-compiled` | `official_compiled_runtime` | Executes one staged compiled program plus any staged scoring config/bundles against the mounted runtime manifest |
 
+The runtime profile owns the deterministic child-process environment. The
+current official profile pins `LANG`, `LC_ALL`, `PYTHONHASHSEED`,
+`SOURCE_DATE_EPOCH`, and `TZ`; replay and publication prove that environment by
+its canonical sorted-key JSON SHA-256.
+
 The image is the L5 runtime substrate. It does not branch on scoring method,
 metric, or aggregator names. The main Agora compiler stages one Python-v1
 program per invocation. That program can implement one scoring primitive or a
@@ -125,7 +131,8 @@ Official runtime files:
   - discovers the staged program scoring asset
   - discovers the staged `python_v1_runtime_sdk` document asset first in
     `PYTHONPATH`
-  - sets ABI environment variables and executes the staged program
+  - sets runtime-profile determinism and ABI environment variables before
+    executing the staged program
 - `agora-scorer-compiled/test_score.py`
   - scorer regression tests for the official compiled runtime
 
@@ -213,7 +220,7 @@ The publish workflow:
 - publishes a GitHub/Sigstore provenance attestation for the pushed image
   digest
 - publishes `:latest` and `:sha-<git-commit>` tags to GHCR
-- emits `runtime_manifest_schema_sha256` and
+- emits `runtime_manifest_schema_sha256`, `determinism_env_sha256`, and
   `supported_program_abi_versions` in `official-runtime-release.json`
 - emits verifier-oriented provenance metadata in
   `official-runtime-release.json`: subject name, subject digest, source

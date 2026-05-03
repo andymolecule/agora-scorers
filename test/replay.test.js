@@ -5,7 +5,7 @@ import path from "node:path";
 import yaml from "yaml";
 import { SUPPORTED_PROGRAM_ABI_VERSIONS } from "../src/constants.js";
 import { challengeSpecSchema } from "../src/contracts.js";
-import { replayProof } from "../src/replay.js";
+import { computeDeterminismEnvSha256, replayProof } from "../src/replay.js";
 import { readRuntimeManifestSchemaSha256 } from "../src/schema-hash.js";
 import { sha256Hex, computeProofInputHashFromFiles } from "../src/hash.js";
 import { stageReplayWorkspace } from "../src/stage.js";
@@ -15,6 +15,13 @@ const IMAGE =
   "ghcr.io/moleculeprotocol/agora-scorer-compiled@sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const OTHER_IMAGE =
   "ghcr.io/moleculeprotocol/agora-scorer-compiled@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+const DETERMINISM_ENV = {
+  LANG: "C.UTF-8",
+  LC_ALL: "C.UTF-8",
+  PYTHONHASHSEED: "0",
+  SOURCE_DATE_EPOCH: "0",
+  TZ: "UTC",
+};
 
 const encoder = new TextEncoder();
 const tests = [];
@@ -65,6 +72,7 @@ function buildSpec(overrides = {}) {
           timeout_ms: 30000,
         },
         supported_program_abi_versions: runtimeSupported,
+        determinism_env: DETERMINISM_ENV,
       },
       artifact_contract: {
         evaluation: [
@@ -350,6 +358,10 @@ test("replays a public proof bundle and emits receiver contract fields", async (
   assert.equal(result.runtime_profile_id, "official_compiled_runtime");
   assert.equal(result.image_digest, IMAGE);
   assert.match(result.runtime_manifest_schema_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(
+    result.determinism_env_sha256,
+    computeDeterminismEnvSha256(DETERMINISM_ENV),
+  );
   assert.equal(result.program_abi_version, "python-v1");
   assert.deepEqual(result.supported_program_abi_versions, ["python-v1"]);
   assert.equal(result.abi_supported, true);

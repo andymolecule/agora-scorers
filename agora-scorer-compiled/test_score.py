@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -307,6 +308,32 @@ def run_case(
 
 
 def main() -> None:
+    module = load_scorer_module()
+    old_pythonhashseed = os.environ.get("PYTHONHASHSEED")
+    os.environ["PYTHONHASHSEED"] = "999"
+    try:
+        program_env = module.build_program_env(
+            {
+                "runtime_manifest_path": Path("/input/runtime-manifest.json"),
+                "runtime_profile": build_official_runtime_profile(),
+                "evaluation_root": Path("/input/evaluation"),
+                "submission_root": Path("/input/submission"),
+                "scoring_assets_root": Path("/input/scoring_assets"),
+                "objective": "maximize",
+                "final_score_key": "final_score",
+            },
+            {"role": "compiled_program", "asset": {"abi_version": "python-v1"}},
+            Path("/input/scoring_assets/python_v1_runtime_sdk"),
+        )
+    finally:
+        if old_pythonhashseed is None:
+            del os.environ["PYTHONHASHSEED"]
+        else:
+            os.environ["PYTHONHASHSEED"] = old_pythonhashseed
+
+    assert program_env["PYTHONHASHSEED"] == "0", program_env
+    assert program_env["TZ"] == "UTC", program_env
+
     exit_code, payload = run_case(
         runtime_profile=build_official_runtime_profile(),
         reference_payload=json.dumps({"answer": "pep-1"}),

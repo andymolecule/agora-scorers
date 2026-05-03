@@ -106,6 +106,9 @@ export async function runScorerContainer(input) {
   await fs.writeFile(input.outputPath, "");
 
   const name = `agora-replay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const determinismEnvArgs = Object.entries(input.determinismEnv ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([key, value]) => ["--env", `${key}=${value}`]);
   const args = [
     "run",
     "--rm",
@@ -133,18 +136,12 @@ export async function runScorerContainer(input) {
     `type=bind,src=${input.inputDir},dst=/input,readonly`,
     "--mount",
     `type=bind,src=${input.outputPath},dst=/output/score.json`,
+    ...determinismEnvArgs,
     input.image,
   ];
 
   const result = await runCommand("docker", args, {
-    env: {
-      ...process.env,
-      LANG: "C.UTF-8",
-      LC_ALL: "C.UTF-8",
-      PYTHONHASHSEED: "0",
-      SOURCE_DATE_EPOCH: "0",
-      TZ: "UTC",
-    },
+    env: process.env,
   });
 
   if (result.code !== 0) {

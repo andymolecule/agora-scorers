@@ -790,6 +790,12 @@
     "runtime_profile": {
       "additionalProperties": false,
       "properties": {
+        "determinism_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "image": {
           "minLength": 1,
           "pattern": "^.+@sha256:[a-f0-9]{64}$",
@@ -848,7 +854,8 @@
         "kind",
         "profile_id",
         "image",
-        "limits"
+        "limits",
+        "determinism_env"
       ],
       "type": "object"
     },

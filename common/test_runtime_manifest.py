@@ -231,6 +231,8 @@ def test_canonical_schema_defaults_match_python_validator() -> None:
 def test_canonical_schema_required_fields_match_python_validator() -> None:
     schema = load_canonical_schema()
     assert "scorer_result_schema" in schema["required"]
+    runtime_profile_schema = schema["properties"]["runtime_profile"]
+    assert "determinism_env" in runtime_profile_schema["required"]
 
     runtime_fixture = make_runtime_manifest(
         runtime_profile=build_official_runtime_profile(),
@@ -245,6 +247,16 @@ def test_canonical_schema_required_fields_match_python_validator() -> None:
         assert_rejected(
             {"workspace": workspace},
             "Runtime manifest scorer_result_schema must be an object.",
+        )
+
+        runtime_manifest["scorer_result_schema"] = runtime_fixture[
+            "scorer_result_schema"
+        ]
+        del runtime_manifest["runtime_profile"]["determinism_env"]
+        write_manifest_payload(workspace / "input", runtime_manifest)
+        assert_rejected(
+            {"workspace": workspace},
+            "Runtime manifest runtime_profile.determinism_env must be an object.",
         )
     finally:
         shutil.rmtree(workspace)
@@ -285,6 +297,37 @@ def test_official_program_scoring_asset_resolution() -> None:
         shutil.rmtree(workspace)
 
 
+def test_program_abi_must_be_supported_by_runtime_profile() -> None:
+    runtime_profile = {
+        **build_official_runtime_profile(),
+        "supported_program_abi_versions": ["python-v2"],
+    }
+    runtime_fixture = make_runtime_manifest(
+        runtime_profile=runtime_profile,
+        include_program=True,
+    )
+    workspace = runtime_fixture["workspace"]
+    try:
+        runtime_manifest = load_runtime_manifest(
+            input_dir=workspace / "input",
+            fail_runtime=fail_runtime,
+        )
+        error = None
+        try:
+            resolve_program_scoring_asset(
+                runtime_manifest,
+                fail_runtime=fail_runtime,
+                supported_abi_versions={"python-v1"},
+            )
+        except RuntimeError as caught:
+            error = caught
+
+        assert error is not None
+        assert "does not support compiled-program ABI python-v1" in str(error)
+    finally:
+        shutil.rmtree(workspace)
+
+
 def main() -> None:
     test_unknown_runtime_profile_kind_rejected()
     test_canonical_schema_artifact_hash()
@@ -292,6 +335,7 @@ def main() -> None:
     test_canonical_schema_defaults_match_python_validator()
     test_canonical_schema_required_fields_match_python_validator()
     test_official_program_scoring_asset_resolution()
+    test_program_abi_must_be_supported_by_runtime_profile()
     print("runtime manifest tests passed")
 
 
