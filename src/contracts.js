@@ -69,7 +69,7 @@ const runtimeProfileSchema = z
         memory: trimmedStringSchema,
         cpus: trimmedStringSchema,
         pids: z.number().int().positive(),
-        timeout_ms: z.number().int().positive(),
+        timeoutMs: z.number().int().positive(),
       })
       .strict(),
     supported_program_abi_versions: z.array(trimmedStringSchema).default([]),
@@ -81,8 +81,7 @@ const evaluationBindingSchema = z
   .object({
     kind: z.literal("artifact"),
     role: artifactRoleSchema,
-    artifact_id: trimmedStringSchema.optional(),
-    uri: uriSchema.optional(),
+    artifact_id: trimmedStringSchema,
   })
   .strict();
 

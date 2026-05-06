@@ -69,7 +69,7 @@ function buildSpec(overrides = {}) {
           memory: "256m",
           cpus: "1",
           pids: 64,
-          timeout_ms: 30000,
+          timeoutMs: 30000,
         },
         supported_program_abi_versions: runtimeSupported,
         determinism_env: DETERMINISM_ENV,
@@ -180,6 +180,28 @@ function buildSpec(overrides = {}) {
     },
   };
 }
+
+test("accepts Agora-shaped schema v5 runtime profile limits and determinism env", () => {
+  const { spec } = buildSpec();
+  const parsed = challengeSpecSchema.parse(spec);
+  assert.equal(parsed.execution.runtime_profile.limits.timeoutMs, 30000);
+  assert.deepEqual(
+    parsed.execution.runtime_profile.determinism_env,
+    DETERMINISM_ENV,
+  );
+});
+
+test("rejects runtime profiles without determinism env", () => {
+  const { spec } = buildSpec();
+  delete spec.execution.runtime_profile.determinism_env;
+  assert.throws(() => challengeSpecSchema.parse(spec), /determinism_env/i);
+});
+
+test("rejects evaluation bindings without artifact ids", () => {
+  const { spec } = buildSpec();
+  delete spec.execution.evaluation_bindings[0].artifact_id;
+  assert.throws(() => challengeSpecSchema.parse(spec), /artifact_id/i);
+});
 
 async function buildProofFixture(options = {}) {
   const output =

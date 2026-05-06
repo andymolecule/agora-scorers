@@ -97,15 +97,6 @@ function bindReplaySubmissionEntries(spec, entries) {
 }
 
 function resolvePublicEvaluationArtifact(spec, binding) {
-  if (binding.uri) {
-    return {
-      artifact_id: binding.artifact_id ?? `${binding.role}_evaluation`,
-      role: binding.role,
-      visibility: "public",
-      uri: binding.uri,
-    };
-  }
-
   const artifact = spec.artifacts.find(
     (candidate) =>
       candidate.visibility === "public" &&
