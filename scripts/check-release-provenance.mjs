@@ -114,6 +114,7 @@ assertEqual(attestStep.with?.["push-to-registry"], true, "attestation registry p
 const exportStep = findStep(publishJob, "Export release metadata");
 const releaseArtifactFields = [
   '"profile_id": "${{ matrix.profile_id }}"',
+  '"runtime_manifest_schema_sha256": "${{ steps.contract-metadata.outputs.runtime_manifest_schema_sha256 }}"',
   '"determinism_env_sha256": "${{ steps.contract-metadata.outputs.determinism_env_sha256 }}"',
   '"provenance"',
   '"predicate_type": "https://slsa.dev/provenance/v1"',
@@ -131,6 +132,24 @@ for (const field of releaseArtifactFields) {
   if (!exportStep.run?.includes(field)) {
     fail(`official-runtime-release.json does not include ${field}.`);
   }
+}
+
+const metadataStep = findStep(publishJob, "Read runtime contract metadata");
+const metadataScript = metadataStep.run ?? "";
+if (
+  !metadataScript.includes(
+    "runtime_manifest_schema_sha256=\"$(sha256sum schema/scorer-runtime-manifest.canonical.schema.json | cut -d ' ' -f1)\"",
+  ) ||
+  !metadataScript.includes(
+    "recorded_schema_sha256=\"$(cut -d ' ' -f1 schema/scorer-runtime-manifest.canonical.sha256)\"",
+  ) ||
+  !metadataScript.includes(
+    'if [ "$runtime_manifest_schema_sha256" != "$recorded_schema_sha256" ]; then',
+  )
+) {
+  fail(
+    "Publish workflow must prove runtime_manifest_schema_sha256 equals the vendored canonical schema hash before exporting release metadata.",
+  );
 }
 
 console.log("release provenance workflow check passed");
