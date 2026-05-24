@@ -16,6 +16,12 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function assertArrayIncludes(values, expected, label) {
+  if (!Array.isArray(values) || !values.includes(expected)) {
+    fail(`${label} must include ${JSON.stringify(expected)}.`);
+  }
+}
+
 function findStep(job, label) {
   const step = job?.steps?.find((candidate) => candidate.name === label);
   if (!step) {
@@ -34,6 +40,29 @@ if (!testJob) {
   fail("Missing test job.");
 }
 
+const pullRequestTrigger = workflow.on?.pull_request;
+if (!pullRequestTrigger) {
+  fail("Publish workflow must run the non-publishing test lane on pull_request.");
+}
+for (const path of [
+  "schema/**",
+  "scripts/**",
+  "package.json",
+  "package-lock.json",
+  ".github/workflows/publish.yml",
+]) {
+  assertArrayIncludes(
+    pullRequestTrigger.paths,
+    path,
+    "pull_request path filter",
+  );
+}
+
+assertEqual(
+  publishJob.if,
+  "github.event_name != 'pull_request'",
+  "publish job pull_request guard",
+);
 assertEqual(publishJob.permissions?.contents, "read", "publish contents permission");
 assertEqual(publishJob.permissions?.packages, "write", "publish packages permission");
 assertEqual(publishJob.permissions?.["id-token"], "write", "publish id-token permission");
@@ -50,6 +79,70 @@ assertEqual(
 
 findStep(testJob, "Run release provenance check");
 findStep(testJob, "Run RDKit image smoke");
+
+const requireAgoraTokenStep = findStep(testJob, "Require Agora repo read token");
+assertEqual(
+  requireAgoraTokenStep.if,
+  "github.event_name != 'pull_request'",
+  "Agora token preflight pull_request guard",
+);
+if (
+  !requireAgoraTokenStep.run?.includes("AGORA_REPO_READ_TOKEN is required") ||
+  !requireAgoraTokenStep.run?.includes("exit 1")
+) {
+  fail("Agora token preflight must fail closed before non-PR publish checks.");
+}
+
+const checkoutAgoraSchemaStep = findStep(
+  testJob,
+  "Checkout Agora canonical runtime manifest schema",
+);
+assertEqual(
+  checkoutAgoraSchemaStep.if,
+  "github.event_name != 'pull_request'",
+  "Agora schema checkout pull_request guard",
+);
+assertEqual(
+  checkoutAgoraSchemaStep.uses,
+  "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+  "Agora schema checkout action",
+);
+assertEqual(
+  checkoutAgoraSchemaStep.with?.repository,
+  "moleculeprotocol/Agora",
+  "Agora schema checkout repository",
+);
+assertEqual(checkoutAgoraSchemaStep.with?.ref, "main", "Agora schema checkout ref");
+assertEqual(
+  checkoutAgoraSchemaStep.with?.token,
+  "${{ secrets.AGORA_REPO_READ_TOKEN }}",
+  "Agora schema checkout token",
+);
+assertEqual(
+  checkoutAgoraSchemaStep.with?.["sparse-checkout"],
+  "packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json",
+  "Agora schema checkout sparse path",
+);
+
+const verifyAgoraSchemaStep = findStep(
+  testJob,
+  "Verify vendored schema matches Agora main",
+);
+assertEqual(
+  verifyAgoraSchemaStep.if,
+  "github.event_name != 'pull_request'",
+  "Agora schema sync pull_request guard",
+);
+assertEqual(
+  verifyAgoraSchemaStep.env?.AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH,
+  "${{ github.workspace }}/agora-main/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json",
+  "Agora schema sync path",
+);
+assertEqual(
+  verifyAgoraSchemaStep.run,
+  "npm run check:agora-main-schema-sync",
+  "Agora schema sync command",
+);
 
 const buildStep = findStep(publishJob, "Build and push ${{ matrix.name }}");
 assertEqual(

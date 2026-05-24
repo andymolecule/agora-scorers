@@ -37,6 +37,10 @@
                 ],
                 "type": "object"
               },
+              "max_data_rows": {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
               "required": {
                 "type": "boolean"
               },
@@ -153,6 +157,36 @@
                     "properties": {
                       "kind": {
                         "enum": [
+                          "peptide_design_artifact"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "measurement_provenance"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
                           "archive_layout"
                         ],
                         "type": "string"
@@ -182,6 +216,51 @@
                       "kind",
                       "required_paths",
                       "required_prefixes"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "helm_string"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "mmcif_coordinate"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "sdf_structure"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
                     ],
                     "type": "object"
                   }
@@ -287,6 +366,41 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "artifact_lane": {
+                    "enum": [
+                      "evaluation",
+                      "submission"
+                    ],
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "provenance_for"
+                    ],
+                    "type": "string"
+                  },
+                  "provenance_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "result_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "artifact_lane",
+                  "provenance_role",
+                  "result_role"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
                   "evaluation_role": {
                     "minLength": 1,
                     "pattern": "^[a-z][a-z0-9_]*$",
@@ -345,6 +459,10 @@
                   "max_bytes"
                 ],
                 "type": "object"
+              },
+              "max_data_rows": {
+                "exclusiveMinimum": 0,
+                "type": "integer"
               },
               "required": {
                 "type": "boolean"
@@ -462,6 +580,36 @@
                     "properties": {
                       "kind": {
                         "enum": [
+                          "peptide_design_artifact"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "measurement_provenance"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
                           "archive_layout"
                         ],
                         "type": "string"
@@ -491,6 +639,51 @@
                       "kind",
                       "required_paths",
                       "required_prefixes"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "helm_string"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "mmcif_coordinate"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "sdf_structure"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
                     ],
                     "type": "object"
                   }
@@ -681,6 +874,36 @@
                 "properties": {
                   "kind": {
                     "enum": [
+                      "peptide_design_artifact"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "measurement_provenance"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
                       "archive_layout"
                     ],
                     "type": "string"
@@ -710,6 +933,51 @@
                   "kind",
                   "required_paths",
                   "required_prefixes"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "helm_string"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "mmcif_coordinate"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "sdf_structure"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
                 ],
                 "type": "object"
               }

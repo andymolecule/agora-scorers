@@ -202,6 +202,16 @@ npm run check:release-provenance
 npm run check:rdkit-image
 ```
 
+Verify that the vendored runtime manifest schema matches Agora main:
+
+```bash
+AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH=/path/to/Agora/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json \
+  npm run check:agora-main-schema-sync
+```
+
+When using GitHub instead of a local checkout, set `AGORA_MAIN_GITHUB_TOKEN` or
+`GITHUB_TOKEN` to a token with read access to `moleculeprotocol/Agora`.
+
 Release notes for the npm receiver package live in [RELEASING.md](./RELEASING.md).
 
 Run specific tests directly:
@@ -239,6 +249,7 @@ The publish workflow:
 - checks that the official runtime image stays code-only
 - builds and runs the RDKit image smoke fixture
 - verifies the vendored canonical runtime manifest schema hash
+- verifies that the vendored runtime manifest schema bytes match Agora main
 - builds multi-arch images for `linux/amd64` and `linux/arm64`
 - emits max-mode BuildKit provenance for the pushed image
 - publishes a GitHub/Sigstore provenance attestation for the pushed image
