@@ -63,6 +63,16 @@ jobs:
       - name: Run release provenance check
         run: npm run check:release-provenance
 
+      - name: Checkout Agora canonical runtime manifest schema
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/moleculeprotocol/Agora /tmp/agora-main
+          git -C /tmp/agora-main sparse-checkout set packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json
+
+      - name: Verify vendored schema matches Agora main
+        env:
+          AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH: /tmp/agora-main/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json
+        run: npm run check:agora-main-schema-sync
+
       - name: Run scorer regression tests
         run: bash scripts/run-scorer-tests.sh
 
