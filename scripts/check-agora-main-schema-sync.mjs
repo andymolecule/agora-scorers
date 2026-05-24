@@ -19,7 +19,7 @@ const DEFAULT_AGORA_SCHEMA_URL =
   "https://raw.githubusercontent.com/moleculeprotocol/Agora/main/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json";
 
 function computeSha256Hex(bytes) {
-  return createHash("sha256").update(bytes, "utf8").digest("hex");
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function readSha256Sidecar(filePath) {
@@ -36,20 +36,24 @@ function readSha256Sidecar(filePath) {
 async function readAgoraMainSchemaBytes(env, fetchImpl) {
   const localAgoraSchemaPath = env.AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH?.trim();
   if (localAgoraSchemaPath) {
-    return fs.readFileSync(localAgoraSchemaPath, "utf8");
+    return fs.readFileSync(localAgoraSchemaPath);
   }
 
   const agoraSchemaUrl =
     env.AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_URL?.trim() ||
     DEFAULT_AGORA_SCHEMA_URL;
-  const response = await fetchImpl(agoraSchemaUrl);
+  const githubToken =
+    env.AGORA_MAIN_GITHUB_TOKEN?.trim() || env.GITHUB_TOKEN?.trim();
+  const response = await fetchImpl(agoraSchemaUrl, {
+    headers: githubToken ? { Authorization: `Bearer ${githubToken}` } : {},
+  });
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch Agora main runtime manifest schema from ${agoraSchemaUrl} (${response.status}). Next step: set AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH to a local Agora checkout artifact or verify network access to moleculeprotocol/Agora and retry.`,
+      `Failed to fetch Agora main runtime manifest schema from ${agoraSchemaUrl} (${response.status}). Next step: set AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH to a local Agora checkout artifact or set AGORA_MAIN_GITHUB_TOKEN/GITHUB_TOKEN with read access to moleculeprotocol/Agora and retry.`,
     );
   }
 
-  return response.text();
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function verifyAgoraMainSchemaSync(
@@ -68,12 +72,12 @@ export async function verifyAgoraMainSchemaSync(
   }
 
   const agoraBytes = await readAgoraMainSchemaBytes(env, fetchImpl);
-  const localBytes = fs.readFileSync(LOCAL_SCHEMA_PATH, "utf8");
+  const localBytes = fs.readFileSync(LOCAL_SCHEMA_PATH);
   const agoraSha256 = computeSha256Hex(agoraBytes);
   const localSha256 = computeSha256Hex(localBytes);
   const sidecarSha256 = readSha256Sidecar(LOCAL_SHA256_PATH);
 
-  if (agoraBytes !== localBytes) {
+  if (!agoraBytes.equals(localBytes)) {
     throw new Error(
       `Vendored runtime manifest schema drift from Agora main: agora_main_sha256=${agoraSha256}, local_sha256=${localSha256}. Next step: revendor packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json from moleculeprotocol/Agora main into schema/scorer-runtime-manifest.canonical.schema.json and update schema/scorer-runtime-manifest.canonical.sha256.`,
     );
