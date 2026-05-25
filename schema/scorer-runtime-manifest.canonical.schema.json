@@ -73,6 +73,66 @@
                         "default": true,
                         "type": "boolean"
                       },
+                      "column_constraints": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "allowed_values": {
+                              "items": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "column": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "data_type": {
+                              "enum": [
+                                "string",
+                                "number",
+                                "integer",
+                                "boolean",
+                                "categorical"
+                              ],
+                              "type": "string"
+                            },
+                            "numeric_range": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "max": {
+                                  "type": "number"
+                                },
+                                "min": {
+                                  "type": "number"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "semantic_role": {
+                              "enum": [
+                                "record_id",
+                                "measurement_value",
+                                "unit",
+                                "qualifier",
+                                "target_id",
+                                "group_label",
+                                "qc_flag",
+                                "replicate_id"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "column"
+                          ],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
                       "kind": {
                         "enum": [
                           "csv_columns"
@@ -496,6 +556,66 @@
                         "default": true,
                         "type": "boolean"
                       },
+                      "column_constraints": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "allowed_values": {
+                              "items": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "column": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "data_type": {
+                              "enum": [
+                                "string",
+                                "number",
+                                "integer",
+                                "boolean",
+                                "categorical"
+                              ],
+                              "type": "string"
+                            },
+                            "numeric_range": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "max": {
+                                  "type": "number"
+                                },
+                                "min": {
+                                  "type": "number"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "semantic_role": {
+                              "enum": [
+                                "record_id",
+                                "measurement_value",
+                                "unit",
+                                "qualifier",
+                                "target_id",
+                                "group_label",
+                                "qc_flag",
+                                "replicate_id"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "column"
+                          ],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
                       "kind": {
                         "enum": [
                           "csv_columns"
@@ -789,6 +909,66 @@
                   "allow_extra": {
                     "default": true,
                     "type": "boolean"
+                  },
+                  "column_constraints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_values": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "column": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "data_type": {
+                          "enum": [
+                            "string",
+                            "number",
+                            "integer",
+                            "boolean",
+                            "categorical"
+                          ],
+                          "type": "string"
+                        },
+                        "numeric_range": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "max": {
+                              "type": "number"
+                            },
+                            "min": {
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "semantic_role": {
+                          "enum": [
+                            "record_id",
+                            "measurement_value",
+                            "unit",
+                            "qualifier",
+                            "target_id",
+                            "group_label",
+                            "qc_flag",
+                            "replicate_id"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "column"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
                   },
                   "kind": {
                     "enum": [
