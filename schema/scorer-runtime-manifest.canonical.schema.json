@@ -230,6 +230,77 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "allow_cysteine": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "alphabet": {
+                        "default": "ACDEFGHIKLMNPQRSTVWY",
+                        "minLength": 1,
+                        "pattern": "^[A-Z]+$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "protein_sequence_fasta"
+                        ],
+                        "type": "string"
+                      },
+                      "max_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allow_cysteine": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "alphabet": {
+                        "default": "ACDEFGHIKLMNPQRSTVWY",
+                        "minLength": 1,
+                        "pattern": "^[A-Z]+$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "protein_sequence_list"
+                        ],
+                        "type": "string"
+                      },
+                      "max_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_sequences": {
+                        "default": 1,
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "kind": {
                         "enum": [
                           "measurement_provenance"
@@ -713,6 +784,77 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "allow_cysteine": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "alphabet": {
+                        "default": "ACDEFGHIKLMNPQRSTVWY",
+                        "minLength": 1,
+                        "pattern": "^[A-Z]+$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "protein_sequence_fasta"
+                        ],
+                        "type": "string"
+                      },
+                      "max_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allow_cysteine": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "alphabet": {
+                        "default": "ACDEFGHIKLMNPQRSTVWY",
+                        "minLength": 1,
+                        "pattern": "^[A-Z]+$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "protein_sequence_list"
+                        ],
+                        "type": "string"
+                      },
+                      "max_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_length": {
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      },
+                      "min_sequences": {
+                        "default": 1,
+                        "exclusiveMinimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "kind": {
                         "enum": [
                           "measurement_provenance"
@@ -1057,6 +1199,77 @@
                       "peptide_design_artifact"
                     ],
                     "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allow_cysteine": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "alphabet": {
+                    "default": "ACDEFGHIKLMNPQRSTVWY",
+                    "minLength": 1,
+                    "pattern": "^[A-Z]+$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "protein_sequence_fasta"
+                    ],
+                    "type": "string"
+                  },
+                  "max_length": {
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
+                  },
+                  "min_length": {
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allow_cysteine": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "alphabet": {
+                    "default": "ACDEFGHIKLMNPQRSTVWY",
+                    "minLength": 1,
+                    "pattern": "^[A-Z]+$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "protein_sequence_list"
+                    ],
+                    "type": "string"
+                  },
+                  "max_length": {
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
+                  },
+                  "min_length": {
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
+                  },
+                  "min_sequences": {
+                    "default": 1,
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
                   }
                 },
                 "required": [
