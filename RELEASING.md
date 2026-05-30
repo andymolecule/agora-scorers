@@ -22,12 +22,20 @@ scope. Keep this limitation explicit:
 - Recovery codes and account ownership must live in Molecule-controlled secret
   storage, not in this repository.
 
-For `0.1.x` receiver releases, publish from a clean `main` checkout:
+The replay package must be republished whenever the vendored proof bundle
+schema hash changes. The `npx` verifier is part of the public trust surface, so
+`main` is not enough if the latest npm package still admits an old proof shape.
+
+For `0.2.x` receiver releases, publish from a clean `main` checkout:
 
 ```bash
 npm whoami
 npm test
 npm run check:replay-boundary
+npm run check:release-provenance
+AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH=/path/to/Agora/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json \
+AGORA_MAIN_PROOF_BUNDLE_SCHEMA_PATH=/path/to/Agora/packages/common/src/schemas/proof-bundle.canonical.schema.json \
+  npm run check:agora-main-schema-sync
 npm publish --access public
 ```
 

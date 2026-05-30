@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout Agora canonical runtime manifest schema
+      - name: Checkout Agora canonical schemas
         if: github.event_name != 'pull_request'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -96,13 +96,16 @@ jobs:
           ref: main
           path: agora-main
           token: ${{ secrets.AGORA_REPO_READ_TOKEN }}
-          sparse-checkout: packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json
+          sparse-checkout: |
+            packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json
+            packages/common/src/schemas/proof-bundle.canonical.schema.json
           sparse-checkout-cone-mode: false
 
-      - name: Verify vendored schema matches Agora main
+      - name: Verify vendored schemas match Agora main
         if: github.event_name != 'pull_request'
         env:
           AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH: ${{ github.workspace }}/agora-main/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json
+          AGORA_MAIN_PROOF_BUNDLE_SCHEMA_PATH: ${{ github.workspace }}/agora-main/packages/common/src/schemas/proof-bundle.canonical.schema.json
         run: npm run check:agora-main-schema-sync
 
       - name: Run scorer regression tests
@@ -147,9 +150,15 @@ jobs:
         id: contract-metadata
         run: |
           runtime_manifest_schema_sha256="$(sha256sum schema/scorer-runtime-manifest.canonical.schema.json | cut -d ' ' -f1)"
-          recorded_schema_sha256="$(cut -d ' ' -f1 schema/scorer-runtime-manifest.canonical.sha256)"
-          if [ "$runtime_manifest_schema_sha256" != "$recorded_schema_sha256" ]; then
+          recorded_runtime_schema_sha256="$(cut -d ' ' -f1 schema/scorer-runtime-manifest.canonical.sha256)"
+          if [ "$runtime_manifest_schema_sha256" != "$recorded_runtime_schema_sha256" ]; then
             echo "Canonical runtime manifest schema hash mismatch. Next step: revendor the Agora main artifact and update schema/scorer-runtime-manifest.canonical.sha256." >&2
+            exit 1
+          fi
+          proof_bundle_schema_sha256="$(sha256sum schema/proof-bundle.canonical.schema.json | cut -d ' ' -f1)"
+          recorded_proof_schema_sha256="$(cut -d ' ' -f1 schema/proof-bundle.canonical.sha256)"
+          if [ "$proof_bundle_schema_sha256" != "$recorded_proof_schema_sha256" ]; then
+            echo "Canonical proof bundle schema hash mismatch. Next step: revendor the Agora main artifact and update schema/proof-bundle.canonical.sha256." >&2
             exit 1
           fi
           determinism_env_json='${{ matrix.determinism_env_json }}'
@@ -157,6 +166,7 @@ jobs:
 
           {
             echo "runtime_manifest_schema_sha256=${runtime_manifest_schema_sha256}"
+            echo "proof_bundle_schema_sha256=${proof_bundle_schema_sha256}"
             echo "supported_program_abi_versions=${{ matrix.supported_program_abi_versions }}"
             echo "determinism_env_sha256=${determinism_env_sha256}"
             echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -216,6 +226,7 @@ jobs:
             "tags": ["latest", "sha-${{ github.sha }}"],
             "platforms": ["linux/amd64", "linux/arm64"],
             "runtime_manifest_schema_sha256": "${{ steps.contract-metadata.outputs.runtime_manifest_schema_sha256 }}",
+            "proof_bundle_schema_sha256": "${{ steps.contract-metadata.outputs.proof_bundle_schema_sha256 }}",
             "supported_program_abi_versions": ["${{ steps.contract-metadata.outputs.supported_program_abi_versions }}"],
             "determinism_env_sha256": "${{ steps.contract-metadata.outputs.determinism_env_sha256 }}",
             "provenance": {

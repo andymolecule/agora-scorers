@@ -8,22 +8,39 @@ const uriSchema = z.string().trim().min(1);
 const artifactRoleSchema = trimmedStringSchema.regex(/^[a-z][a-z0-9_]*$/);
 const scoringAssetKindSchema = z.enum(["program", "config", "bundle", "document"]);
 
+const timelockedReplayArtifactSchema = z
+  .object({
+    lane: z.enum(["evaluation", "scoring_asset"]),
+    role: artifactRoleSchema,
+    artifact_id: trimmedStringSchema.optional(),
+    replay_artifact_uri: uriSchema,
+    staged_relative_path: trimmedStringSchema.optional(),
+    file_name: trimmedStringSchema.optional(),
+    size_bytes: z.number().int().nonnegative().optional(),
+    sha256: hexSha256Schema.optional(),
+  })
+  .passthrough();
+
 export const proofBundleSchema = z
   .object({
     score: z.number().finite(),
-    inputHash: hexSha256Schema,
-    outputHash: hexSha256Schema,
-    containerImageDigest: trimmedStringSchema,
-    scorerLog: z.string().optional(),
-    challengeSpecCid: trimmedStringSchema,
-    replaySubmissionCid: trimmedStringSchema,
+    input_hash: hexSha256Schema,
+    output_hash: hexSha256Schema,
+    container_image_digest: trimmedStringSchema,
+    scorer_log: z.string().optional(),
+    challenge_spec_cid: trimmedStringSchema,
+    replay_submission_cid: trimmedStringSchema,
+    timelocked_submission: z.object({}).passthrough().optional(),
+    timelocked_private_artifacts: z
+      .array(timelockedReplayArtifactSchema)
+      .optional(),
+    measurement_provenance_receipts: z.array(z.unknown()).optional(),
     meta: z
       .object({
-        challengeId: trimmedStringSchema.optional(),
-        submissionId: trimmedStringSchema.optional(),
+        challenge_id: trimmedStringSchema,
+        submission_id: trimmedStringSchema,
       })
-      .strict()
-      .optional(),
+      .strict(),
   })
   .strict();
 
@@ -100,6 +117,18 @@ const scoringAssetSourceSchema = z
   })
   .strict();
 
+const scoringAssetRefSchema = z
+  .object({
+    role: trimmedStringSchema,
+    kind: scoringAssetKindSchema,
+    artifact_id: trimmedStringSchema,
+    abi_version: trimmedStringSchema.optional(),
+    entrypoint: trimmedStringSchema.optional(),
+    file_name: trimmedStringSchema.optional(),
+    mime_type: trimmedStringSchema.optional(),
+  })
+  .strict();
+
 const scorerResultFieldSchema = z.union([
   trimmedStringSchema.transform((key) => ({ key, value_type: "number" })),
   z
@@ -143,7 +172,7 @@ export const scorerOutputEnvelopeSchema = z.discriminatedUnion("ok", [
 
 export const challengeSpecSchema = z
   .object({
-    schema_version: z.literal(5),
+    schema_version: z.union([z.literal(5), z.literal(6)]),
     id: trimmedStringSchema,
     execution: z
       .object({
@@ -151,6 +180,7 @@ export const challengeSpecSchema = z
         artifact_contract: artifactContractSchema,
         evaluation_bindings: z.array(evaluationBindingSchema),
         scoring_asset_sources: z.array(scoringAssetSourceSchema).default([]),
+        scoring_assets: z.array(scoringAssetRefSchema).default([]),
         objective: z.enum(["maximize", "minimize"]),
         final_score_key: trimmedStringSchema,
         scorer_result_schema: scorerResultSchema,
@@ -181,6 +211,7 @@ export const challengeSpecSchema = z
             description: trimmedStringSchema.optional(),
             size_bytes: z.number().int().nonnegative().optional(),
             sha256: hexSha256Schema.optional(),
+            timelock_commitment: z.object({}).passthrough().optional(),
           })
           .strict(),
       )

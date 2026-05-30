@@ -96,21 +96,62 @@ function bindReplaySubmissionEntries(spec, entries) {
   });
 }
 
-function resolvePublicEvaluationArtifact(spec, binding) {
+function resolveReplayArtifact(privateArtifacts, input) {
+  return (
+    privateArtifacts.find(
+      (candidate) =>
+        candidate.lane === input.lane &&
+        candidate.artifact_id &&
+        candidate.artifact_id === input.artifactId,
+    ) ??
+    privateArtifacts.find(
+      (candidate) =>
+        candidate.lane === input.lane && candidate.role === input.role,
+    ) ??
+    null
+  );
+}
+
+function sourceFromReplayArtifact(replayArtifact) {
+  return {
+    artifact_id: replayArtifact.artifact_id ?? replayArtifact.role,
+    role: replayArtifact.role,
+    uri: replayArtifact.replay_artifact_uri,
+    file_name:
+      replayArtifact.file_name ??
+      (replayArtifact.staged_relative_path
+        ? basename(replayArtifact.staged_relative_path)
+        : undefined),
+    size_bytes: replayArtifact.size_bytes,
+    sha256: replayArtifact.sha256,
+  };
+}
+
+function resolveEvaluationArtifact(spec, binding, privateArtifacts) {
   const artifact = spec.artifacts.find(
     (candidate) =>
       candidate.visibility === "public" &&
       candidate.artifact_id === binding.artifact_id &&
       candidate.uri,
   );
-  if (!artifact) {
-    fail(
-      `Evaluation binding ${binding.role} does not resolve to a public artifact URI.`,
-      "publish the required evaluation artifact in the public challenge spec or use an auditable public proof bundle.",
-      "missing_public_evaluation_artifact",
-    );
+  if (artifact) {
+    return artifact;
   }
-  return artifact;
+
+  const replayArtifact = resolveReplayArtifact(privateArtifacts, {
+    lane: "evaluation",
+    role: binding.role,
+    artifactId: binding.artifact_id,
+  });
+  if (replayArtifact) {
+    return sourceFromReplayArtifact(replayArtifact);
+  }
+
+  fail(
+    `Evaluation binding ${binding.role} does not resolve to a public artifact URI or proof replay artifact URI.`,
+    "publish the required evaluation artifact in the public challenge spec or include the replay_artifact_uri in the proof bundle and retry.",
+    "missing_public_evaluation_artifact",
+  );
 }
 
 async function stageBytes(input) {
@@ -119,7 +160,12 @@ async function stageBytes(input) {
   return input.outputPath;
 }
 
-async function stageEvaluationArtifacts(spec, inputDir, gateway) {
+async function stageEvaluationArtifacts(
+  spec,
+  inputDir,
+  gateway,
+  privateArtifacts,
+) {
   const staged = [];
   for (const binding of spec.execution.evaluation_bindings) {
     const slot = findSlot(spec.execution.artifact_contract, "evaluation", binding.role);
@@ -130,7 +176,7 @@ async function stageEvaluationArtifacts(spec, inputDir, gateway) {
         "invalid_challenge_spec",
       );
     }
-    const artifact = resolvePublicEvaluationArtifact(spec, binding);
+    const artifact = resolveEvaluationArtifact(spec, binding, privateArtifacts);
     const bytes = await fetchBytes(artifact.uri, gateway);
     const fileName = resolveSourceFileName(
       artifact,
@@ -207,9 +253,50 @@ async function stageSubmissionArtifacts(spec, inputDir, replayBundleBytes) {
   return staged;
 }
 
-async function stageScoringAssets(spec, inputDir, gateway) {
+function resolveScoringAssetSources(spec, privateArtifacts) {
+  const sources = [...spec.execution.scoring_asset_sources];
+  const sourceKeys = new Set(
+    sources.map((source) => `${source.artifact_id}:${source.role}`),
+  );
+
+  for (const asset of spec.execution.scoring_assets) {
+    const key = `${asset.artifact_id}:${asset.role}`;
+    if (sourceKeys.has(key)) {
+      continue;
+    }
+    const replayArtifact = resolveReplayArtifact(privateArtifacts, {
+      lane: "scoring_asset",
+      role: asset.role,
+      artifactId: asset.artifact_id,
+    });
+    if (!replayArtifact) {
+      fail(
+        `Scoring asset ${asset.role} does not resolve to a proof replay artifact URI.`,
+        "publish replay_artifact_uri entries for every private scoring asset or use a proof bundle that includes them.",
+        "missing_scoring_asset_replay_artifact",
+      );
+    }
+    sources.push({
+      ...asset,
+      uri: replayArtifact.replay_artifact_uri,
+      file_name:
+        asset.file_name ??
+        replayArtifact.file_name ??
+        (replayArtifact.staged_relative_path
+          ? basename(replayArtifact.staged_relative_path)
+          : undefined),
+      size_bytes: replayArtifact.size_bytes,
+      sha256: replayArtifact.sha256,
+    });
+    sourceKeys.add(key);
+  }
+
+  return sources;
+}
+
+async function stageScoringAssets(spec, inputDir, gateway, privateArtifacts) {
   const staged = [];
-  for (const source of spec.execution.scoring_asset_sources) {
+  for (const source of resolveScoringAssetSources(spec, privateArtifacts)) {
     const bytes = await fetchBytes(source.uri, gateway);
     const fileName = resolveScoringAssetFileName(source);
     const relativePath = path.posix.join(
@@ -321,10 +408,25 @@ export function serializeRuntimeManifest(manifest) {
 }
 
 export async function stageReplayWorkspace(input) {
+  const privateArtifacts = input.privateReplayArtifacts ?? [];
   const [stagedEvaluation, stagedSubmission, stagedScoringAssets] = await Promise.all([
-    stageEvaluationArtifacts(input.spec, input.inputDir, input.gateway),
-    stageSubmissionArtifacts(input.spec, input.inputDir, input.replayBundleBytes),
-    stageScoringAssets(input.spec, input.inputDir, input.gateway),
+    stageEvaluationArtifacts(
+      input.spec,
+      input.inputDir,
+      input.gateway,
+      privateArtifacts,
+    ),
+    stageSubmissionArtifacts(
+      input.spec,
+      input.inputDir,
+      input.replayBundleBytes,
+    ),
+    stageScoringAssets(
+      input.spec,
+      input.inputDir,
+      input.gateway,
+      privateArtifacts,
+    ),
   ]);
 
   const manifestArtifacts = buildManifestArtifacts(

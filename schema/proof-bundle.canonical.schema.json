@@ -1,0 +1,883 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "Canonical machine-readable public proof bundle contract emitted by Agora scoring.",
+  "properties": {
+    "challenge_spec_cid": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "container_image_digest": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "input_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "measurement_provenance_receipts": {
+      "items": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "assurance_tier": {
+                "const": "provider_signed_package",
+                "type": "string"
+              },
+              "attestation_role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              "benchmark_source": {
+                "additionalProperties": false,
+                "properties": {
+                  "attestation_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "component_id": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_:-]*$",
+                    "type": "string"
+                  },
+                  "evidence_kind": {
+                    "const": "provider_attested_evaluation_artifact",
+                    "type": "string"
+                  },
+                  "result_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "truth_source_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "component_id",
+                  "truth_source_role",
+                  "evidence_kind",
+                  "result_role",
+                  "attestation_role"
+                ],
+                "type": "object"
+              },
+              "evidence_scheme": {
+                "const": "provider_signed_package_v1",
+                "type": "string"
+              },
+              "experiment": {
+                "additionalProperties": false,
+                "properties": {
+                  "ordered_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "performed_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "protocol_sha256": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": ["ordered_at", "performed_at", "protocol_sha256"],
+                "type": "object"
+              },
+              "key_id": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
+                "type": "string"
+              },
+              "package_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "provider_id": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
+                "type": "string"
+              },
+              "receipt_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "registry_digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "registry_version": {
+                "const": "measurement_provenance_provider_registry_v1",
+                "type": "string"
+              },
+              "result_lane": {
+                "enum": ["evaluation", "submission"],
+                "type": "string"
+              },
+              "result_role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              "result_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "measurement_provenance_receipt_v1",
+                "type": "string"
+              },
+              "signed_payload_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "status": {
+                "const": "verified",
+                "type": "string"
+              },
+              "subject_bindings": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "declared_subject": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artifact_lane": {
+                          "enum": ["evaluation", "submission"],
+                          "type": "string"
+                        },
+                        "artifact_role": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "artifact_sha256": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "record_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "record_schema": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "artifact_lane",
+                        "artifact_role",
+                        "artifact_sha256",
+                        "record_schema",
+                        "record_id"
+                      ],
+                      "type": "object"
+                    },
+                    "result_binding": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "result_role": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "result_row_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": ["result_role", "result_row_id"],
+                      "type": "object"
+                    },
+                    "subject_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subject_id",
+                    "declared_subject",
+                    "result_binding"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "submission_identity": {
+                "additionalProperties": false,
+                "properties": {
+                  "payload_commitment": {
+                    "type": "string"
+                  },
+                  "submitted_commitment": {
+                    "type": "string"
+                  }
+                },
+                "required": ["payload_commitment", "submitted_commitment"],
+                "type": "object"
+              },
+              "verification_mode": {
+                "const": "offline_signature",
+                "type": "string"
+              },
+              "verified_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "verifier_version": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "schema_version",
+              "status",
+              "provider_id",
+              "evidence_scheme",
+              "assurance_tier",
+              "result_lane",
+              "result_role",
+              "attestation_role",
+              "result_sha256",
+              "subject_bindings",
+              "registry_version",
+              "registry_digest",
+              "verifier_version",
+              "receipt_sha256",
+              "verification_mode",
+              "experiment",
+              "key_id",
+              "signed_payload_sha256",
+              "package_sha256"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "adapter_digest": {
+                "const": "adaptyv_foundry_provider_api_adapter_v1_a9044f9fbb7a849478afb004539193656222e0ea6c88b0b917175ee82b1eaf5e",
+                "type": "string"
+              },
+              "adapter_id": {
+                "const": "adaptyv_foundry_provider_api_v1",
+                "type": "string"
+              },
+              "adapter_version": {
+                "const": "adaptyv_foundry_provider_api_adapter_v1",
+                "type": "string"
+              },
+              "assurance_tier": {
+                "const": "provider_api_retrieved",
+                "type": "string"
+              },
+              "attestation_role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              "benchmark_source": {
+                "additionalProperties": false,
+                "properties": {
+                  "attestation_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "component_id": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_:-]*$",
+                    "type": "string"
+                  },
+                  "evidence_kind": {
+                    "const": "provider_attested_evaluation_artifact",
+                    "type": "string"
+                  },
+                  "result_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  },
+                  "truth_source_role": {
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "component_id",
+                  "truth_source_role",
+                  "evidence_kind",
+                  "result_role",
+                  "attestation_role"
+                ],
+                "type": "object"
+              },
+              "evidence_scheme": {
+                "const": "provider_api_retrieved_v1",
+                "type": "string"
+              },
+              "fetched_evidence": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "sha256": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "source_type": {
+                      "enum": [
+                        "experiment",
+                        "result",
+                        "sequence",
+                        "data_package"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["source_type", "sha256", "size_bytes"],
+                  "type": "object"
+                },
+                "minItems": 2,
+                "type": "array"
+              },
+              "provider_id": {
+                "const": "adaptyv_foundry",
+                "type": "string"
+              },
+              "receipt_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "registry_digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "registry_version": {
+                "const": "measurement_provenance_provider_registry_v1",
+                "type": "string"
+              },
+              "result_lane": {
+                "enum": ["evaluation", "submission"],
+                "type": "string"
+              },
+              "result_role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              "result_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "retrieved_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "measurement_provenance_receipt_v1",
+                "type": "string"
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "data_package_checked": {
+                    "type": "boolean"
+                  },
+                  "experiment_created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "experiment_status": {
+                    "const": "done",
+                    "type": "string"
+                  },
+                  "experiment_type": {
+                    "enum": [
+                      "affinity",
+                      "screening",
+                      "thermostability",
+                      "fluorescence",
+                      "expression",
+                      "epitope_binning",
+                      "enzyme_activity"
+                    ],
+                    "type": "string"
+                  },
+                  "result_created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "result_type": {
+                    "enum": ["affinity", "thermostability"],
+                    "type": "string"
+                  },
+                  "results_status": {
+                    "const": "all",
+                    "type": "string"
+                  },
+                  "sequence_checked": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "experiment_type",
+                  "result_type",
+                  "experiment_status",
+                  "results_status",
+                  "experiment_created_at",
+                  "result_created_at",
+                  "sequence_checked",
+                  "data_package_checked"
+                ],
+                "type": "object"
+              },
+              "status": {
+                "const": "verified",
+                "type": "string"
+              },
+              "subject_bindings": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "declared_subject": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artifact_lane": {
+                          "enum": ["evaluation", "submission"],
+                          "type": "string"
+                        },
+                        "artifact_role": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "artifact_sha256": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "record_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "record_schema": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "artifact_lane",
+                        "artifact_role",
+                        "artifact_sha256",
+                        "record_schema",
+                        "record_id"
+                      ],
+                      "type": "object"
+                    },
+                    "result_binding": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "result_role": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_]*$",
+                          "type": "string"
+                        },
+                        "result_row_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": ["result_role", "result_row_id"],
+                      "type": "object"
+                    },
+                    "subject_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subject_id",
+                    "declared_subject",
+                    "result_binding"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "submission_identity": {
+                "additionalProperties": false,
+                "properties": {
+                  "payload_commitment": {
+                    "type": "string"
+                  },
+                  "submitted_commitment": {
+                    "type": "string"
+                  }
+                },
+                "required": ["payload_commitment", "submitted_commitment"],
+                "type": "object"
+              },
+              "verification_mode": {
+                "const": "provider_api_retrieved",
+                "type": "string"
+              },
+              "verified_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "verifier_version": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "schema_version",
+              "status",
+              "provider_id",
+              "evidence_scheme",
+              "assurance_tier",
+              "result_lane",
+              "result_role",
+              "attestation_role",
+              "result_sha256",
+              "subject_bindings",
+              "registry_version",
+              "registry_digest",
+              "verifier_version",
+              "receipt_sha256",
+              "verification_mode",
+              "source",
+              "fetched_evidence",
+              "adapter_id",
+              "adapter_version",
+              "adapter_digest"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "meta": {
+      "additionalProperties": false,
+      "properties": {
+        "challenge_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "submission_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": ["challenge_id", "submission_id"],
+      "type": "object"
+    },
+    "output_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "replay_submission_cid": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "score": {
+      "type": "number"
+    },
+    "scorer_log": {
+      "type": "string"
+    },
+    "timelocked_private_artifacts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "lane": {
+            "enum": ["evaluation", "scoring_asset"],
+            "type": "string"
+          },
+          "manifest_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "replay_artifact_uri": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sealed_ref": {
+            "additionalProperties": false,
+            "properties": {
+              "envelope_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "timelocked_private_artifact",
+                "type": "string"
+              },
+              "reveal_policy": {
+                "additionalProperties": false,
+                "properties": {
+                  "chain_hash": {
+                    "pattern": "^[a-fA-F0-9]{64}$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "drand_round",
+                    "type": "string"
+                  },
+                  "network": {
+                    "const": "quicknet",
+                    "type": "string"
+                  },
+                  "not_before": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "round": {
+                    "exclusiveMinimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "network",
+                  "chain_hash",
+                  "round",
+                  "not_before"
+                ],
+                "type": "object"
+              },
+              "uri": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["kind", "uri", "envelope_sha256", "reveal_policy"],
+            "type": "object"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "staged_relative_path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "role",
+          "sealed_ref",
+          "manifest_digest",
+          "size_bytes",
+          "sha256",
+          "staged_relative_path",
+          "replay_artifact_uri"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "timelocked_submission": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_set_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "artifact_set_digest_version": {
+          "const": "submission_artifact_set_sha256_v1",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "file_name": {
+                "anyOf": [
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mime_type": {
+                "anyOf": [
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "role": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "size_bytes": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "staged_relative_path": {
+                "anyOf": [
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "present",
+              "file_name",
+              "mime_type",
+              "size_bytes",
+              "sha256",
+              "staged_relative_path"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "encrypted_manifest_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "payload_commitment": {
+          "type": "string"
+        },
+        "result_cid": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reveal_policy": {
+          "additionalProperties": false,
+          "properties": {
+            "chain_hash": {
+              "pattern": "^[a-fA-F0-9]{64}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "drand_round",
+              "type": "string"
+            },
+            "network": {
+              "const": "quicknet",
+              "type": "string"
+            },
+            "not_before": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "round": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "network", "chain_hash", "round", "not_before"],
+          "type": "object"
+        },
+        "submitted_commitment": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result_cid",
+        "payload_commitment",
+        "submitted_commitment",
+        "manifest_digest",
+        "encrypted_manifest_digest",
+        "reveal_policy",
+        "artifact_set_digest",
+        "artifact_set_digest_version",
+        "artifacts"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "score",
+    "input_hash",
+    "output_hash",
+    "container_image_digest",
+    "challenge_spec_cid",
+    "replay_submission_cid",
+    "meta"
+  ],
+  "title": "Agora Proof Bundle",
+  "type": "object"
+}

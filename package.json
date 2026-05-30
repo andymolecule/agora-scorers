@@ -1,6 +1,6 @@
 {
   "name": "@moleculeagora/agora-replay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Standalone third-party replay verifier for Agora scorer proofs.",
   "type": "module",
   "bin": {

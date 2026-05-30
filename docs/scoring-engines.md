@@ -68,6 +68,8 @@ Canonical discovery lives in the main Agora repo:
   `GET /api/authoring/capabilities`
 - runtime manifest schema:
   `/.well-known/scorer-runtime-manifest.schema.json`
+- proof bundle schema:
+  `packages/common/src/schemas/proof-bundle.canonical.schema.json`
 - scorer result schema:
   `/.well-known/scorer-result-schema.schema.json`
 - scoring model:
@@ -215,8 +217,8 @@ The publish workflow in this repo (`.github/workflows/publish.yml`) produces
 each image and emits a release artifact (`official-runtime-release.json`) with
 the explicit handoff fields the main repo needs: `profile_id`, `image_ref`,
 `digest`, `tags`, `platforms`, `runtime_manifest_schema_sha256`,
-`supported_program_abi_versions`, `determinism_env_sha256`, and scorer-repo
-`commit`. The same contract facts are stamped onto the image as OCI labels. The
-main repo deployment pipeline consumes that immutable handoff to update its
-runtime profile registry, closing the loop without coupling the two repos'
-release cadences.
+`proof_bundle_schema_sha256`, `supported_program_abi_versions`,
+`determinism_env_sha256`, and scorer-repo `commit`. The same runtime contract
+facts are stamped onto the image as OCI labels. The main repo deployment
+pipeline consumes that immutable handoff to update its runtime profile
+registry, closing the loop without coupling the two repos' release cadences.

@@ -95,7 +95,7 @@ if (
 
 const checkoutAgoraSchemaStep = findStep(
   testJob,
-  "Checkout Agora canonical runtime manifest schema",
+  "Checkout Agora canonical schemas",
 );
 assertEqual(
   checkoutAgoraSchemaStep.if,
@@ -120,13 +120,13 @@ assertEqual(
 );
 assertEqual(
   checkoutAgoraSchemaStep.with?.["sparse-checkout"],
-  "packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json",
+  "packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json\npackages/common/src/schemas/proof-bundle.canonical.schema.json\n",
   "Agora schema checkout sparse path",
 );
 
 const verifyAgoraSchemaStep = findStep(
   testJob,
-  "Verify vendored schema matches Agora main",
+  "Verify vendored schemas match Agora main",
 );
 assertEqual(
   verifyAgoraSchemaStep.if,
@@ -137,6 +137,11 @@ assertEqual(
   verifyAgoraSchemaStep.env?.AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH,
   "${{ github.workspace }}/agora-main/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json",
   "Agora schema sync path",
+);
+assertEqual(
+  verifyAgoraSchemaStep.env?.AGORA_MAIN_PROOF_BUNDLE_SCHEMA_PATH,
+  "${{ github.workspace }}/agora-main/packages/common/src/schemas/proof-bundle.canonical.schema.json",
+  "Agora proof schema sync path",
 );
 assertEqual(
   verifyAgoraSchemaStep.run,
@@ -208,6 +213,7 @@ const exportStep = findStep(publishJob, "Export release metadata");
 const releaseArtifactFields = [
   '"profile_id": "${{ matrix.profile_id }}"',
   '"runtime_manifest_schema_sha256": "${{ steps.contract-metadata.outputs.runtime_manifest_schema_sha256 }}"',
+  '"proof_bundle_schema_sha256": "${{ steps.contract-metadata.outputs.proof_bundle_schema_sha256 }}"',
   '"determinism_env_sha256": "${{ steps.contract-metadata.outputs.determinism_env_sha256 }}"',
   '"provenance"',
   '"predicate_type": "https://slsa.dev/provenance/v1"',
@@ -234,14 +240,30 @@ if (
     "runtime_manifest_schema_sha256=\"$(sha256sum schema/scorer-runtime-manifest.canonical.schema.json | cut -d ' ' -f1)\"",
   ) ||
   !metadataScript.includes(
-    "recorded_schema_sha256=\"$(cut -d ' ' -f1 schema/scorer-runtime-manifest.canonical.sha256)\"",
+    "recorded_runtime_schema_sha256=\"$(cut -d ' ' -f1 schema/scorer-runtime-manifest.canonical.sha256)\"",
   ) ||
   !metadataScript.includes(
-    'if [ "$runtime_manifest_schema_sha256" != "$recorded_schema_sha256" ]; then',
+    'if [ "$runtime_manifest_schema_sha256" != "$recorded_runtime_schema_sha256" ]; then',
   )
 ) {
   fail(
     "Publish workflow must prove runtime_manifest_schema_sha256 equals the vendored canonical schema hash before exporting release metadata.",
+  );
+}
+
+if (
+  !metadataScript.includes(
+    "proof_bundle_schema_sha256=\"$(sha256sum schema/proof-bundle.canonical.schema.json | cut -d ' ' -f1)\"",
+  ) ||
+  !metadataScript.includes(
+    "recorded_proof_schema_sha256=\"$(cut -d ' ' -f1 schema/proof-bundle.canonical.sha256)\"",
+  ) ||
+  !metadataScript.includes(
+    'if [ "$proof_bundle_schema_sha256" != "$recorded_proof_schema_sha256" ]; then',
+  )
+) {
+  fail(
+    "Publish workflow must prove proof_bundle_schema_sha256 equals the vendored canonical schema hash before exporting release metadata.",
   );
 }
 
