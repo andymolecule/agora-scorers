@@ -4,9 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "yaml";
 import { SUPPORTED_PROGRAM_ABI_VERSIONS } from "../src/constants.js";
-import { challengeSpecSchema } from "../src/contracts.js";
+import { challengeSpecSchema, proofBundleSchema } from "../src/contracts.js";
 import { computeDeterminismEnvSha256, replayProof } from "../src/replay.js";
-import { readRuntimeManifestSchemaSha256 } from "../src/schema-hash.js";
+import {
+  readProofBundleSchemaSha256,
+  readRuntimeManifestSchemaSha256,
+} from "../src/schema-hash.js";
 import { sha256Hex, computeProofInputHashFromFiles } from "../src/hash.js";
 import { stageReplayWorkspace } from "../src/stage.js";
 import { createStoredZipArchive } from "../src/stored-zip.js";
@@ -239,18 +242,18 @@ async function buildProofFixture(options = {}) {
     });
     const proof = {
       score: options.proofScore ?? 0.9,
-      inputHash: options.inputHash ?? inputHash,
-      outputHash: options.outputHash ?? sha256Hex(output),
-      containerImageDigest: options.image ?? IMAGE,
-      challengeSpecCid: "speccid",
-      replaySubmissionCid: "replaycid",
+      input_hash: options.inputHash ?? inputHash,
+      output_hash: options.outputHash ?? sha256Hex(output),
+      container_image_digest: options.image ?? IMAGE,
+      challenge_spec_cid: "speccid",
+      replay_submission_cid: "replaycid",
       meta: {
-        challengeId: "fixture-challenge",
-        submissionId: "fixture-submission",
+        challenge_id: "fixture-challenge",
+        submission_id: "fixture-submission",
       },
     };
     if (options.omitReplaySubmissionCid) {
-      delete proof.replaySubmissionCid;
+      delete proof.replay_submission_cid;
     }
 
     return {
@@ -380,6 +383,7 @@ test("replays a public proof bundle and emits receiver contract fields", async (
   assert.equal(result.runtime_profile_id, "official_compiled_runtime");
   assert.equal(result.image_digest, IMAGE);
   assert.match(result.runtime_manifest_schema_sha256, /^[a-f0-9]{64}$/);
+  assert.match(result.proof_bundle_schema_sha256, /^[a-f0-9]{64}$/);
   assert.equal(
     result.determinism_env_sha256,
     computeDeterminismEnvSha256(DETERMINISM_ENV),
@@ -404,7 +408,7 @@ test("replays from an arbitrary user working directory", async () => {
   }
 });
 
-test("rejects proof bundles without replaySubmissionCid", async () => {
+test("rejects proof bundles without replay_submission_cid", async () => {
   const fixture = await buildProofFixture({ omitReplaySubmissionCid: true });
   await withFetchFixture(fixture.routes, async (gateway) => {
     await assert.rejects(
@@ -414,9 +418,136 @@ test("rejects proof bundles without replaySubmissionCid", async () => {
         format: "json",
         keepWorkspace: false,
       }),
-      /replaySubmissionCid/,
+      /replay_submission_cid/,
     );
   });
+});
+
+test("rejects camelCase proof bundle fields", async () => {
+  const fixture = await buildProofFixture();
+  const camelCaseProof = {
+    score: fixture.proof.score,
+    inputHash: fixture.proof.input_hash,
+    outputHash: fixture.proof.output_hash,
+    containerImageDigest: fixture.proof.container_image_digest,
+    challengeSpecCid: fixture.proof.challenge_spec_cid,
+    replaySubmissionCid: fixture.proof.replay_submission_cid,
+    meta: {
+      challengeId: fixture.proof.meta.challenge_id,
+      submissionId: fixture.proof.meta.submission_id,
+    },
+  };
+  assert.throws(() => proofBundleSchema.parse(camelCaseProof), /input_hash/);
+});
+
+test("admits the real challenge 7 emitted proof bundle", async () => {
+  const proof = JSON.parse(
+    await fs.readFile("test/fixtures/challenge-7-proof-bundle.json", "utf8"),
+  );
+  const parsed = proofBundleSchema.parse(proof);
+  assert.equal(parsed.score, 0.3712485568109655);
+  assert.equal(parsed.challenge_spec_cid, "ipfs://bafkreig6xq3nsvmf2qoj7witf2jnhvhn7bj7m7hcwqzgwczxsskwlss3we");
+  assert.equal(parsed.replay_submission_cid, "ipfs://bafkreihtg4ylrnwilszkyupewgtnzahmu6vt4m4j3van4nhydf7vayaii4");
+  assert.equal(parsed.meta.challenge_id, "7");
+  assert.equal(
+    parsed.meta.submission_id,
+    "bc52fe65-5246-4aa4-8aa3-00e4dfe76ed4",
+  );
+});
+
+test("admits the real challenge 7 emitted challenge spec", async () => {
+  const spec = JSON.parse(
+    await fs.readFile("test/fixtures/challenge-7-spec.json", "utf8"),
+  );
+  const parsed = challengeSpecSchema.parse(spec);
+  assert.equal(parsed.schema_version, 6);
+  assert.equal(parsed.execution.scoring_assets.length, 8);
+  assert.equal(
+    parsed.execution.runtime_profile.profile_id,
+    "official_compiled_runtime",
+  );
+});
+
+test("stages schema v6 private replay artifacts for evaluation and scoring assets", async () => {
+  const { spec, files } = buildSpec();
+  const scoringAssetSources = spec.execution.scoring_asset_sources;
+  spec.schema_version = 6;
+  spec.artifacts[0].visibility = "private";
+  delete spec.artifacts[0].uri;
+  spec.execution.scoring_assets = scoringAssetSources.map((source) => ({
+    role: source.role,
+    kind: source.kind,
+    artifact_id: source.artifact_id,
+    ...(source.abi_version ? { abi_version: source.abi_version } : {}),
+    ...(source.entrypoint ? { entrypoint: source.entrypoint } : {}),
+    ...(source.file_name ? { file_name: source.file_name } : {}),
+    ...(source.mime_type ? { mime_type: source.mime_type } : {}),
+  }));
+  spec.execution.scoring_asset_sources = [];
+
+  const submissionBytes = bytes("id,prediction\n1,0.9\n");
+  const replayBundle = createStoredZipArchive([
+    {
+      relativePath: "submission/answer/answer.csv",
+      bytes: submissionBytes,
+    },
+  ]);
+  const privateReplayArtifacts = [
+    {
+      lane: "evaluation",
+      role: "gold",
+      artifact_id: "gold_fixture",
+      replay_artifact_uri: "ipfs://evalcid",
+      staged_relative_path: "evaluation/gold/gold.csv",
+      size_bytes: files.evalcid.byteLength,
+      sha256: sha256Hex(files.evalcid),
+    },
+    ...scoringAssetSources.map((source) => {
+      const cid = source.uri.replace("ipfs://", "");
+      const content = files[cid];
+      return {
+        lane: "scoring_asset",
+        role: source.role,
+        artifact_id: source.artifact_id,
+        replay_artifact_uri: source.uri,
+        staged_relative_path: `scoring_assets/${source.role}/${source.file_name}`,
+        size_bytes: content.byteLength,
+        sha256: sha256Hex(content),
+      };
+    }),
+  ];
+  const tempDir = await createTempDir();
+  try {
+    await withFetchFixture(
+      Object.fromEntries(
+        Object.entries(files).map(([cid, content]) => [cid, Buffer.from(content)]),
+      ),
+      async (gateway) => {
+        const inputDir = path.join(tempDir, "input");
+        await fs.mkdir(inputDir, { recursive: true });
+        const staged = await stageReplayWorkspace({
+          spec: challengeSpecSchema.parse(spec),
+          image: IMAGE,
+          inputDir,
+          replayBundleBytes: replayBundle,
+          gateway,
+          privateReplayArtifacts,
+        });
+        assert.deepEqual(
+          staged.programAssets.map((asset) => asset.role),
+          ["compiled_program"],
+        );
+        assert.equal(
+          staged.inputPaths.some((inputPath) =>
+            inputPath.endsWith("scoring_assets/compiled_program/score.py"),
+          ),
+          true,
+        );
+      },
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("rejects unsupported program ABI versions before running Docker", async () => {
@@ -448,6 +579,27 @@ test("rejects stale vendored runtime schema hashes", async () => {
     );
     await assert.rejects(
       readRuntimeManifestSchemaSha256(rootDir),
+      /schema hash does not match/,
+    );
+  } finally {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects stale vendored proof bundle schema hashes", async () => {
+  const rootDir = await createTempDir();
+  try {
+    await fs.mkdir(path.join(rootDir, "schema"), { recursive: true });
+    await fs.writeFile(
+      path.join(rootDir, "schema/proof-bundle.canonical.schema.json"),
+      "{}",
+    );
+    await fs.writeFile(
+      path.join(rootDir, "schema/proof-bundle.canonical.sha256"),
+      "0000000000000000000000000000000000000000000000000000000000000000  proof-bundle.canonical.schema.json\n",
+    );
+    await assert.rejects(
+      readProofBundleSchemaSha256(rootDir),
       /schema hash does not match/,
     );
   } finally {

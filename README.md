@@ -44,6 +44,7 @@ monorepo.
 The output includes:
 
 - `runtime_manifest_schema_sha256`
+- `proof_bundle_schema_sha256`
 - `determinism_env_sha256`
 - `supported_program_abi_versions`
 - `program_abi_version`
@@ -125,7 +126,7 @@ bin/                        agora-replay executable entry point
 src/                        standalone replay receiver implementation
 test/                       replay receiver fixtures and tests
 docs/                       scorer-side extension notes
-schema/                     vendored Agora main canonical runtime schema
+schema/                     vendored Agora main canonical runtime/proof schemas
 scripts/                    local test helpers and container guards
 ```
 
@@ -202,10 +203,12 @@ npm run check:release-provenance
 npm run check:rdkit-image
 ```
 
-Verify that the vendored runtime manifest schema matches Agora main:
+Verify that the vendored runtime manifest and proof bundle schemas match Agora
+main:
 
 ```bash
 AGORA_MAIN_RUNTIME_MANIFEST_SCHEMA_PATH=/path/to/Agora/packages/common/src/schemas/scorer-runtime-manifest.canonical.schema.json \
+AGORA_MAIN_PROOF_BUNDLE_SCHEMA_PATH=/path/to/Agora/packages/common/src/schemas/proof-bundle.canonical.schema.json \
   npm run check:agora-main-schema-sync
 ```
 
@@ -230,6 +233,9 @@ surfaces instead of copying capability lists into this repo:
   `GET /api/authoring/capabilities`
 - Runtime manifest schema:
   `/.well-known/scorer-runtime-manifest.schema.json`
+- Proof bundle schema:
+  `packages/common/src/schemas/proof-bundle.canonical.schema.json` in the main
+  Agora repo
 - Scorer result schema:
   `/.well-known/scorer-result-schema.schema.json`
 - Product scoring model:
@@ -248,15 +254,18 @@ The publish workflow:
 - rejects retired scorer vocabulary in active public-repo surfaces
 - checks that the official runtime image stays code-only
 - builds and runs the RDKit image smoke fixture
-- verifies the vendored canonical runtime manifest schema hash
-- verifies that the vendored runtime manifest schema bytes match Agora main
+- verifies the vendored canonical runtime manifest and proof bundle schema
+  hashes
+- verifies that the vendored runtime manifest and proof bundle schema bytes
+  match Agora main
 - builds multi-arch images for `linux/amd64` and `linux/arm64`
 - emits max-mode BuildKit provenance for the pushed image
 - publishes a GitHub/Sigstore provenance attestation for the pushed image
   digest
 - publishes `:latest` and `:sha-<git-commit>` tags to GHCR
-- emits `runtime_manifest_schema_sha256`, `determinism_env_sha256`, and
-  `supported_program_abi_versions` in `official-runtime-release.json`
+- emits `runtime_manifest_schema_sha256`, `proof_bundle_schema_sha256`,
+  `determinism_env_sha256`, and `supported_program_abi_versions` in
+  `official-runtime-release.json`
 - emits verifier-oriented provenance metadata in
   `official-runtime-release.json`: subject name, subject digest, source
   repository, source ref, source commit, signer workflow, and attestation URL

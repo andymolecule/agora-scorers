@@ -7,5 +7,9 @@ export const RUNTIME_MANIFEST_SCHEMA_PATH =
   "schema/scorer-runtime-manifest.canonical.schema.json";
 export const RUNTIME_MANIFEST_SCHEMA_HASH_PATH =
   "schema/scorer-runtime-manifest.canonical.sha256";
+export const PROOF_BUNDLE_SCHEMA_PATH =
+  "schema/proof-bundle.canonical.schema.json";
+export const PROOF_BUNDLE_SCHEMA_HASH_PATH =
+  "schema/proof-bundle.canonical.sha256";
 export const SUPPORTED_PROGRAM_ABI_VERSIONS = ["python-v1"];
 export const DEFAULT_SCORE_TOLERANCE = 0.001;

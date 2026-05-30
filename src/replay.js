@@ -22,7 +22,10 @@ import {
   sha256File,
 } from "./hash.js";
 import { resolvePinnedImage, runScorerContainer } from "./docker.js";
-import { readRuntimeManifestSchemaSha256 } from "./schema-hash.js";
+import {
+  readProofBundleSchemaSha256,
+  readRuntimeManifestSchemaSha256,
+} from "./schema-hash.js";
 import { stageReplayWorkspace } from "./stage.js";
 
 export function computeDeterminismEnvSha256(determinismEnv) {
@@ -96,7 +99,7 @@ function parseChallengeSpec(text) {
   } catch {
     fail(
       "Challenge spec CID did not contain valid YAML.",
-      "verify proof.challengeSpecCid points to an Agora pinned challenge spec and retry.",
+      "verify proof.challenge_spec_cid points to an Agora pinned challenge spec and retry.",
       "invalid_challenge_spec",
     );
   }
@@ -104,7 +107,7 @@ function parseChallengeSpec(text) {
     challengeSpecSchema,
     parsed,
     "challenge spec",
-    "verify proof.challengeSpecCid points to a current Agora pinned challenge spec and retry.",
+    "verify proof.challenge_spec_cid points to a current Agora pinned challenge spec and retry.",
   );
 }
 
@@ -128,12 +131,16 @@ function parseScorerOutput(text) {
 }
 
 export async function replayProof(options) {
-  const runtimeManifestSchemaSha256 = await readRuntimeManifestSchemaSha256();
+  const [runtimeManifestSchemaSha256, proofBundleSchemaSha256] =
+    await Promise.all([
+      readRuntimeManifestSchemaSha256(),
+      readProofBundleSchemaSha256(),
+    ]);
   const proof = parseWithNextAction(
     proofBundleSchema,
     await fetchJson(options.proof, options.ipfsGateway),
     "proof bundle",
-    "use a current public proof CID with challengeSpecCid and replaySubmissionCid fields.",
+    "use a current public proof CID with challenge_spec_cid and replay_submission_cid fields.",
   );
   const proofHash = hashProofBundleCid(options.proof);
   const proofHashMatches = options.expectedProofHash
@@ -141,18 +148,19 @@ export async function replayProof(options) {
     : null;
 
   const [challengeSpecText, replayBundleBytes] = await Promise.all([
-    fetchText(proof.challengeSpecCid, options.ipfsGateway),
-    fetchBytes(proof.replaySubmissionCid, options.ipfsGateway),
+    fetchText(proof.challenge_spec_cid, options.ipfsGateway),
+    fetchBytes(proof.replay_submission_cid, options.ipfsGateway),
   ]);
   const challengeSpec = parseChallengeSpec(challengeSpecText);
 
   return await withWorkspace(options, async (workspace) => {
     const staged = await stageReplayWorkspace({
       spec: challengeSpec,
-      image: proof.containerImageDigest,
+      image: proof.container_image_digest,
       inputDir: workspace.inputDir,
       replayBundleBytes,
       gateway: options.ipfsGateway,
+      privateReplayArtifacts: proof.timelocked_private_artifacts ?? [],
     });
     const programAbiVersion = findProgramAbiVersion(staged.programAssets);
     const abiSupported =
@@ -166,9 +174,11 @@ export async function replayProof(options) {
       );
     }
 
-    const resolvedImageDigest = await resolvePinnedImage(proof.containerImageDigest);
+    const resolvedImageDigest = await resolvePinnedImage(
+      proof.container_image_digest,
+    );
     await runScorerContainer({
-      image: proof.containerImageDigest,
+      image: proof.container_image_digest,
       inputDir: workspace.inputDir,
       outputPath: workspace.outputPath,
       limits: challengeSpec.execution.runtime_profile.limits,
@@ -215,19 +225,19 @@ export async function replayProof(options) {
       mismatches,
       "input_hash",
       actualInputHash,
-      proof.inputHash,
+      proof.input_hash,
     );
     const outputHashMatches = boolMatch(
       mismatches,
       "output_hash",
       actualOutputHash,
-      proof.outputHash,
+      proof.output_hash,
     );
     const containerDigestMatches = boolMatch(
       mismatches,
       "container_image_digest",
       resolvedImageDigest,
-      proof.containerImageDigest,
+      proof.container_image_digest,
     );
     if (proofHashMatches === false) {
       mismatches.push({
@@ -244,11 +254,12 @@ export async function replayProof(options) {
       proof_cid: options.proof,
       proof_hash: proofHash,
       proof_hash_matches: proofHashMatches,
-      challenge_spec_cid: proof.challengeSpecCid,
-      replay_submission_cid: proof.replaySubmissionCid,
+      challenge_spec_cid: proof.challenge_spec_cid,
+      replay_submission_cid: proof.replay_submission_cid,
       runtime_profile_id: challengeSpec.execution.runtime_profile.profile_id,
-      image_digest: proof.containerImageDigest,
+      image_digest: proof.container_image_digest,
       runtime_manifest_schema_sha256: runtimeManifestSchemaSha256,
+      proof_bundle_schema_sha256: proofBundleSchemaSha256,
       determinism_env_sha256: computeDeterminismEnvSha256(
         challengeSpec.execution.runtime_profile.determinism_env,
       ),
