@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "yaml";
 import { SUPPORTED_PROGRAM_ABI_VERSIONS } from "../src/constants.js";
-import { challengeSpecSchema, proofBundleSchema } from "../src/contracts.js";
+import {
+  challengeSpecSchema,
+  computeScoreBasisCommitment,
+  proofBundleSchema,
+} from "../src/contracts.js";
 import { computeDeterminismEnvSha256, replayProof } from "../src/replay.js";
 import {
   readProofBundleSchemaSha256,
@@ -26,8 +30,15 @@ const DETERMINISM_ENV = {
 const SCORE_PROOF_FACTS = {
   kind: "score_proof_facts",
   scoring_profile_id: "official_compiled_runtime",
-  score_basis_commitment:
-    "0xe37730d617634fbb6b380ea1d7d94e3cdbf7fa04e4e8cf9748ed64a171299929",
+  score_basis_commitment: computeScoreBasisCommitment({
+    challengeSpecCid: "ipfs://speccid",
+    containerImageDigest: IMAGE,
+    runtimeManifestDigest:
+      "2222222222222222222222222222222222222222222222222222222222222222",
+    scoringProfileId: "official_compiled_runtime",
+    privateInputCommitment:
+      "0x4bf406c6aa679448dc09fe15365b166e8c9e6c1cee919e9fb0900c848bd46a89",
+  }),
   runtime_manifest_digest:
     "2222222222222222222222222222222222222222222222222222222222222222",
   private_input_commitment:
@@ -290,6 +301,20 @@ test("rejects proof bundles without score_proof_facts", () => {
   const proof = buildProofFixture();
   delete proof.score_proof_facts;
   assert.throws(() => proofBundleSchema.parse(proof), /score_proof_facts/);
+});
+
+test("rejects proof bundles with mismatched score basis commitments", () => {
+  const proof = buildProofFixture({
+    scoreProofFacts: {
+      ...SCORE_PROOF_FACTS,
+      score_basis_commitment:
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    },
+  });
+  assert.throws(
+    () => proofBundleSchema.parse(proof),
+    /score_basis_commitment/,
+  );
 });
 
 test("rejects camelCase proof bundle fields", () => {

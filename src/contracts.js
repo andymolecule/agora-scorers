@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { fail } from "./errors.js";
 
@@ -11,6 +12,37 @@ const ipfsOrHttpsUriSchema = trimmedStringSchema.refine(
 );
 const artifactRoleSchema = trimmedStringSchema.regex(/^[a-z][a-z0-9_]*$/);
 const scoringAssetKindSchema = z.enum(["program", "config", "bundle", "document"]);
+const OPTIMISTIC_PRIVATE_SCORING_MODEL = "optimistic_private_scoring";
+
+function normalizeJsonValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeJsonValue(entry));
+  }
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeJsonValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function sha256Hex32(preimage) {
+  return `0x${createHash("sha256").update(JSON.stringify(normalizeJsonValue(preimage))).digest("hex")}`;
+}
+
+export function computeScoreBasisCommitment(input) {
+  return sha256Hex32({
+    challenge_spec_cid: input.challengeSpecCid,
+    container_image_digest: input.containerImageDigest,
+    kind: "score_basis_commitment",
+    private_input_commitment: input.privateInputCommitment,
+    runtime_manifest_digest: input.runtimeManifestDigest,
+    scoring_model: OPTIMISTIC_PRIVATE_SCORING_MODEL,
+    scoring_profile_id: input.scoringProfileId,
+  });
+}
 
 const scoreProofFactsSchema = z
   .object({
@@ -38,7 +70,27 @@ export const proofBundleSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((proof, ctx) => {
+    const expectedScoreBasisCommitment = computeScoreBasisCommitment({
+      challengeSpecCid: proof.challenge_spec_cid,
+      containerImageDigest: proof.container_image_digest,
+      runtimeManifestDigest: proof.score_proof_facts.runtime_manifest_digest,
+      scoringProfileId: proof.score_proof_facts.scoring_profile_id,
+      privateInputCommitment: proof.score_proof_facts.private_input_commitment,
+    });
+    if (
+      proof.score_proof_facts.score_basis_commitment.toLowerCase() !==
+      expectedScoreBasisCommitment
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["score_proof_facts", "score_basis_commitment"],
+        message:
+          "score_basis_commitment must match challenge_spec_cid, container_image_digest, runtime_manifest_digest, scoring_profile_id, and private_input_commitment",
+      });
+    }
+  });
 
 const artifactFileSchema = z
   .object({

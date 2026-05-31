@@ -5,7 +5,7 @@
   "score_proof_facts": {
     "kind": "score_proof_facts",
     "scoring_profile_id": "official_compiled_runtime",
-    "score_basis_commitment": "0xe37730d617634fbb6b380ea1d7d94e3cdbf7fa04e4e8cf9748ed64a171299929",
+    "score_basis_commitment": "0xe830259722b2e3790bdaa1e16a01416d081b9be01997f0509f9943b7e9c00e8f",
     "runtime_manifest_digest": "2222222222222222222222222222222222222222222222222222222222222222",
     "private_input_commitment": "0x4bf406c6aa679448dc09fe15365b166e8c9e6c1cee919e9fb0900c848bd46a89",
     "artifact_digest_policy": "private_no_public_equality_digest"

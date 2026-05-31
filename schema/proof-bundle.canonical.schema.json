@@ -619,6 +619,7 @@
           "type": "string"
         },
         "score_basis_commitment": {
+          "description": "Derived from challenge_spec_cid, container_image_digest, runtime_manifest_digest, scoring_profile_id, and private_input_commitment; receivers must reject mismatched values.",
           "type": "string"
         },
         "scoring_profile_id": {
