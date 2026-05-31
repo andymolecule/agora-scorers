@@ -5,35 +5,31 @@ const hexSha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const hexBytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const trimmedStringSchema = z.string().trim().min(1);
 const uriSchema = z.string().trim().min(1);
+const ipfsOrHttpsUriSchema = trimmedStringSchema.refine(
+  (value) => value.startsWith("ipfs://") || /^https:\/\/\S+$/.test(value),
+  "value must start with ipfs:// or be a valid https:// URL",
+);
 const artifactRoleSchema = trimmedStringSchema.regex(/^[a-z][a-z0-9_]*$/);
 const scoringAssetKindSchema = z.enum(["program", "config", "bundle", "document"]);
 
-const timelockedReplayArtifactSchema = z
+const scoreProofFactsSchema = z
   .object({
-    lane: z.enum(["evaluation", "scoring_asset"]),
-    role: artifactRoleSchema,
-    artifact_id: trimmedStringSchema.optional(),
-    replay_artifact_uri: uriSchema,
-    staged_relative_path: trimmedStringSchema.optional(),
-    file_name: trimmedStringSchema.optional(),
-    size_bytes: z.number().int().nonnegative().optional(),
-    sha256: hexSha256Schema.optional(),
+    kind: z.literal("score_proof_facts"),
+    scoring_profile_id: trimmedStringSchema,
+    score_basis_commitment: hexBytes32Schema,
+    runtime_manifest_digest: hexSha256Schema,
+    private_input_commitment: hexBytes32Schema,
+    artifact_digest_policy: z.literal("private_no_public_equality_digest"),
   })
-  .passthrough();
+  .strict();
 
 export const proofBundleSchema = z
   .object({
     score: z.number().finite(),
-    input_hash: hexSha256Schema,
-    output_hash: hexSha256Schema,
     container_image_digest: trimmedStringSchema,
     scorer_log: z.string().optional(),
-    challenge_spec_cid: trimmedStringSchema,
-    replay_submission_cid: trimmedStringSchema,
-    timelocked_submission: z.object({}).passthrough().optional(),
-    timelocked_private_artifacts: z
-      .array(timelockedReplayArtifactSchema)
-      .optional(),
+    challenge_spec_cid: ipfsOrHttpsUriSchema,
+    score_proof_facts: scoreProofFactsSchema,
     measurement_provenance_receipts: z.array(z.unknown()).optional(),
     meta: z
       .object({
