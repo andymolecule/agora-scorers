@@ -202,8 +202,8 @@ invocation. It receives mounted inputs via the V2 contract, runs the
 deterministic scoring logic, and writes `/output/score.json`. It has no
 knowledge of queue depth, retries, or downstream consumers.
 The entrypoint applies `runtime_profile.determinism_env` before launching the
-compiled program so local execution and public replay use the same profile-owned
-environment.
+compiled program so local execution and challenge-reveal re-score replay use the
+same profile-owned environment.
 
 ### Why the separation matters
 

@@ -11,10 +11,6 @@
       "minLength": 1,
       "type": "string"
     },
-    "input_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
     "measurement_provenance_receipts": {
       "items": {
         "anyOf": [
@@ -601,281 +597,55 @@
       "required": ["challenge_id", "submission_id"],
       "type": "object"
     },
-    "output_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "replay_submission_cid": {
-      "minLength": 1,
-      "type": "string"
-    },
     "score": {
       "type": "number"
     },
-    "scorer_log": {
-      "type": "string"
-    },
-    "timelocked_private_artifacts": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "artifact_id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "lane": {
-            "enum": ["evaluation", "scoring_asset"],
-            "type": "string"
-          },
-          "manifest_digest": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "replay_artifact_uri": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "role": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "sealed_ref": {
-            "additionalProperties": false,
-            "properties": {
-              "envelope_sha256": {
-                "pattern": "^[a-f0-9]{64}$",
-                "type": "string"
-              },
-              "kind": {
-                "const": "timelocked_private_artifact",
-                "type": "string"
-              },
-              "reveal_policy": {
-                "additionalProperties": false,
-                "properties": {
-                  "chain_hash": {
-                    "pattern": "^[a-fA-F0-9]{64}$",
-                    "type": "string"
-                  },
-                  "kind": {
-                    "const": "drand_round",
-                    "type": "string"
-                  },
-                  "network": {
-                    "const": "quicknet",
-                    "type": "string"
-                  },
-                  "not_before": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  "round": {
-                    "exclusiveMinimum": 0,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "network",
-                  "chain_hash",
-                  "round",
-                  "not_before"
-                ],
-                "type": "object"
-              },
-              "uri": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": ["kind", "uri", "envelope_sha256", "reveal_policy"],
-            "type": "object"
-          },
-          "sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "size_bytes": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "staged_relative_path": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "lane",
-          "role",
-          "sealed_ref",
-          "manifest_digest",
-          "size_bytes",
-          "sha256",
-          "staged_relative_path",
-          "replay_artifact_uri"
-        ],
-        "type": "object"
-      },
-      "type": "array"
-    },
-    "timelocked_submission": {
+    "score_proof_facts": {
       "additionalProperties": false,
       "properties": {
-        "artifact_set_digest": {
-          "pattern": "^sha256:[a-f0-9]{64}$",
+        "artifact_digest_policy": {
+          "const": "private_no_public_equality_digest",
           "type": "string"
         },
-        "artifact_set_digest_version": {
-          "const": "submission_artifact_set_sha256_v1",
+        "kind": {
+          "const": "score_proof_facts",
           "type": "string"
         },
-        "artifacts": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "file_name": {
-                "anyOf": [
-                  {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "mime_type": {
-                "anyOf": [
-                  {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "present": {
-                "type": "boolean"
-              },
-              "role": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "sha256": {
-                "anyOf": [
-                  {
-                    "pattern": "^[a-f0-9]{64}$",
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "size_bytes": {
-                "anyOf": [
-                  {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "staged_relative_path": {
-                "anyOf": [
-                  {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "present",
-              "file_name",
-              "mime_type",
-              "size_bytes",
-              "sha256",
-              "staged_relative_path"
-            ],
-            "type": "object"
-          },
-          "type": "array"
+        "private_input_commitment": {
+          "type": "string"
         },
-        "encrypted_manifest_digest": {
+        "runtime_manifest_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "type": "string"
         },
-        "manifest_digest": {
-          "pattern": "^[a-f0-9]{64}$",
+        "score_basis_commitment": {
+          "description": "Derived from challenge_spec_cid, container_image_digest, runtime_manifest_digest, scoring_profile_id, and private_input_commitment; receivers must reject mismatched values.",
           "type": "string"
         },
-        "payload_commitment": {
-          "type": "string"
-        },
-        "result_cid": {
+        "scoring_profile_id": {
           "minLength": 1,
-          "type": "string"
-        },
-        "reveal_policy": {
-          "additionalProperties": false,
-          "properties": {
-            "chain_hash": {
-              "pattern": "^[a-fA-F0-9]{64}$",
-              "type": "string"
-            },
-            "kind": {
-              "const": "drand_round",
-              "type": "string"
-            },
-            "network": {
-              "const": "quicknet",
-              "type": "string"
-            },
-            "not_before": {
-              "format": "date-time",
-              "type": "string"
-            },
-            "round": {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": ["kind", "network", "chain_hash", "round", "not_before"],
-          "type": "object"
-        },
-        "submitted_commitment": {
           "type": "string"
         }
       },
       "required": [
-        "result_cid",
-        "payload_commitment",
-        "submitted_commitment",
-        "manifest_digest",
-        "encrypted_manifest_digest",
-        "reveal_policy",
-        "artifact_set_digest",
-        "artifact_set_digest_version",
-        "artifacts"
+        "kind",
+        "scoring_profile_id",
+        "score_basis_commitment",
+        "runtime_manifest_digest",
+        "private_input_commitment",
+        "artifact_digest_policy"
       ],
       "type": "object"
+    },
+    "scorer_log": {
+      "type": "string"
     }
   },
   "required": [
     "score",
-    "input_hash",
-    "output_hash",
     "container_image_digest",
     "challenge_spec_cid",
-    "replay_submission_cid",
+    "score_proof_facts",
     "meta"
   ],
   "title": "Agora Proof Bundle",

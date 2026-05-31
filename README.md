@@ -29,29 +29,30 @@ Those remain in the main Agora repo.
 
 ## Third-Party Replay Receiver
 
-This repo also publishes the standalone receiver for public Agora proof replay:
+This repo also publishes the standalone receiver for Agora score proofs:
 
 ```bash
 npx @moleculeagora/agora-replay --proof <cid> --format json
 ```
 
-The receiver consumes public proof bundles, fetches the public challenge spec
-and replay submission bundle, stages the runtime mounted contract, pulls the
-digest-pinned official image anonymously, runs Docker without network access,
-and emits a JSON replay result. It does not require cloning the main Agora
-monorepo.
+The receiver consumes public optimistic-private proof bundles, verifies the
+public proof shape and optional proof hash, and reports the privacy boundary
+without cloning the main Agora monorepo. Non-challenged submissions do not
+publish answer replay inputs; full public re-score verification is only
+available from challenge-by-reveal evidence after a solver voluntarily reveals a
+committed answer.
 
 The output includes:
 
 - `runtime_manifest_schema_sha256`
 - `proof_bundle_schema_sha256`
-- `determinism_env_sha256`
 - `supported_program_abi_versions`
-- `program_abi_version`
-- `score_matches`
-- `input_hash_matches`
-- `output_hash_matches`
-- `container_digest_matches`
+- `status`
+- `reason`
+- `replay_available`
+- `replay_scope`
+- `proof_hash_matches`
+- `score_proof_facts`
 - `mismatches`
 
 ## Runtime Contract

@@ -4,26 +4,46 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "yaml";
 import { SUPPORTED_PROGRAM_ABI_VERSIONS } from "../src/constants.js";
-import { challengeSpecSchema, proofBundleSchema } from "../src/contracts.js";
+import {
+  challengeSpecSchema,
+  computeScoreBasisCommitment,
+  proofBundleSchema,
+} from "../src/contracts.js";
 import { computeDeterminismEnvSha256, replayProof } from "../src/replay.js";
 import {
   readProofBundleSchemaSha256,
   readRuntimeManifestSchemaSha256,
 } from "../src/schema-hash.js";
-import { sha256Hex, computeProofInputHashFromFiles } from "../src/hash.js";
+import { sha256Hex } from "../src/hash.js";
 import { stageReplayWorkspace } from "../src/stage.js";
 import { createStoredZipArchive } from "../src/stored-zip.js";
 
 const IMAGE =
   "ghcr.io/moleculeprotocol/agora-scorer-compiled@sha256:1111111111111111111111111111111111111111111111111111111111111111";
-const OTHER_IMAGE =
-  "ghcr.io/moleculeprotocol/agora-scorer-compiled@sha256:2222222222222222222222222222222222222222222222222222222222222222";
 const DETERMINISM_ENV = {
   LANG: "C.UTF-8",
   LC_ALL: "C.UTF-8",
   PYTHONHASHSEED: "0",
   SOURCE_DATE_EPOCH: "0",
   TZ: "UTC",
+};
+const SCORE_PROOF_FACTS = {
+  kind: "score_proof_facts",
+  scoring_profile_id: "official_compiled_runtime",
+  score_basis_commitment: computeScoreBasisCommitment({
+    challengeSpecCid: "ipfs://speccid",
+    containerImageDigest: IMAGE,
+    runtimeManifestDigest:
+      "2222222222222222222222222222222222222222222222222222222222222222",
+    scoringProfileId: "official_compiled_runtime",
+    privateInputCommitment:
+      "0x4bf406c6aa679448dc09fe15365b166e8c9e6c1cee919e9fb0900c848bd46a89",
+  }),
+  runtime_manifest_digest:
+    "2222222222222222222222222222222222222222222222222222222222222222",
+  private_input_commitment:
+    "0x4bf406c6aa679448dc09fe15365b166e8c9e6c1cee919e9fb0900c848bd46a89",
+  artifact_digest_policy: "private_no_public_equality_digest",
 };
 
 const encoder = new TextEncoder();
@@ -184,6 +204,53 @@ function buildSpec(overrides = {}) {
   };
 }
 
+function buildProofFixture(overrides = {}) {
+  return {
+    score: overrides.score ?? 0.9,
+    container_image_digest: overrides.containerImageDigest ?? IMAGE,
+    challenge_spec_cid: overrides.challengeSpecCid ?? "ipfs://speccid",
+    score_proof_facts: overrides.scoreProofFacts ?? SCORE_PROOF_FACTS,
+    meta: {
+      challenge_id: "fixture-challenge",
+      submission_id: "fixture-submission",
+    },
+  };
+}
+
+async function withFetchFixture(routes, callback) {
+  const previousFetch = globalThis.fetch;
+  const gateway = "https://fixture.local";
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url));
+    const key = parsed.pathname.replace(/^\/ipfs\//, "");
+    const body = routes[key];
+    if (!body) {
+      return new Response("missing fixture", { status: 404 });
+    }
+    return new Response(body, { status: 200 });
+  };
+  try {
+    return await callback(gateway);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+}
+
+async function runFixture(options = {}) {
+  const proof = buildProofFixture(options);
+  return await withFetchFixture(
+    { proofcid: Buffer.from(JSON.stringify(proof)) },
+    async (gateway) =>
+      await replayProof({
+        proof: "proofcid",
+        ipfsGateway: gateway,
+        format: "json",
+        keepWorkspace: false,
+        expectedProofHash: options.expectedProofHash,
+      }),
+  );
+}
+
 test("accepts Agora-shaped schema v5 runtime profile limits and determinism env", () => {
   const { spec } = buildSpec();
   const parsed = challengeSpecSchema.parse(spec);
@@ -206,248 +273,121 @@ test("rejects evaluation bindings without artifact ids", () => {
   assert.throws(() => challengeSpecSchema.parse(spec), /artifact_id/i);
 });
 
-async function buildProofFixture(options = {}) {
-  const output =
-    options.output ??
-    JSON.stringify({
-      ok: true,
-      score: 0.9,
-      details: { final_score: 0.9 },
-    });
-  const submissionBytes = bytes("id,prediction\n1,0.9\n");
-  const replayBundle = createStoredZipArchive([
-    {
-      relativePath: "submission/answer/answer.csv",
-      bytes: submissionBytes,
-    },
-  ]);
-  const { spec, files } = buildSpec(options);
-  const tempDir = await createTempDir();
-  try {
-    const assetRoutes = Object.fromEntries(
-      Object.entries(files).map(([cid, content]) => [cid, Buffer.from(content)]),
-    );
-    const inputHash = await withFetchFixture(assetRoutes, async (gateway) => {
-      const inputDir = path.join(tempDir, "input");
-      await fs.mkdir(inputDir, { recursive: true });
-      const parsedSpec = challengeSpecSchema.parse(yaml.parse(yaml.stringify(spec)));
-      const staged = await stageReplayWorkspace({
-        spec: parsedSpec,
-        image: IMAGE,
-        inputDir,
-        replayBundleBytes: replayBundle,
-        gateway,
-      });
-      return await computeProofInputHashFromFiles(inputDir, staged.inputPaths);
-    });
-    const proof = {
-      score: options.proofScore ?? 0.9,
-      input_hash: options.inputHash ?? inputHash,
-      output_hash: options.outputHash ?? sha256Hex(output),
-      container_image_digest: options.image ?? IMAGE,
-      challenge_spec_cid: "speccid",
-      replay_submission_cid: "replaycid",
-      meta: {
-        challenge_id: "fixture-challenge",
-        submission_id: "fixture-submission",
-      },
-    };
-    if (options.omitReplaySubmissionCid) {
-      delete proof.replay_submission_cid;
-    }
+test("accepts the optimistic-private proof bundle shape", () => {
+  const parsed = proofBundleSchema.parse(buildProofFixture());
+  assert.equal(parsed.score, 0.9);
+  assert.equal(parsed.challenge_spec_cid, "ipfs://speccid");
+  assert.deepEqual(parsed.score_proof_facts, SCORE_PROOF_FACTS);
+});
 
-    return {
-      proof,
-      output,
-      routes: {
-        proofcid: Buffer.from(JSON.stringify(proof)),
-        speccid: Buffer.from(yaml.stringify(spec)),
-        replaycid: Buffer.from(replayBundle),
-        ...assetRoutes,
-      },
-    };
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
-}
-
-async function withFetchFixture(routes, callback) {
-  const previousFetch = globalThis.fetch;
-  const gateway = "https://fixture.local";
-  globalThis.fetch = async (url) => {
-    const parsed = new URL(String(url));
-    const key = parsed.pathname.replace(/^\/ipfs\//, "");
-    const body = routes[key];
-    if (!body) {
-      return new Response("missing fixture", { status: 404 });
-    }
-    return new Response(body, { status: 200 });
+test("rejects retired public replay proof fields", () => {
+  const retiredFields = {
+    input_hash: "a".repeat(64),
+    output_hash: "b".repeat(64),
+    replay_submission_cid: "replaycid",
+    timelocked_submission: {},
+    timelocked_private_artifacts: [],
   };
-  try {
-    return await callback(gateway);
-  } finally {
-    globalThis.fetch = previousFetch;
+
+  for (const [field, value] of Object.entries(retiredFields)) {
+    assert.throws(
+      () => proofBundleSchema.parse({ ...buildProofFixture(), [field]: value }),
+      new RegExp(field),
+    );
   }
-}
+});
 
-async function writeFakeDocker(input) {
-  const dir = await createTempDir();
-  const binDir = path.join(dir, "bin");
-  await fs.mkdir(binDir, { recursive: true });
-  const dockerPath = path.join(binDir, "docker");
-  const inspectDigest = input.inspectDigest ?? IMAGE;
-  await fs.writeFile(
-    dockerPath,
-    `#!/bin/sh
-set -eu
-if [ "$1" = "info" ]; then
-  exit 0
-fi
-if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
-  printf '%s\\n' "${inspectDigest}"
-  exit 0
-fi
-if [ "$1" = "pull" ]; then
-  exit 0
-fi
-if [ "$1" = "run" ]; then
-  out=""
-  for arg in "$@"; do
-    case "$arg" in
-      type=bind,src=*,dst=/output/score.json)
-        out="\${arg#type=bind,src=}"
-        out="\${out%,dst=/output/score.json}"
-        ;;
-    esac
-  done
-  if [ -z "$out" ]; then
-    echo "missing output mount" >&2
-    exit 1
-  fi
-  printf '%s' "$FAKE_DOCKER_OUTPUT" > "$out"
-  exit 0
-fi
-echo "unsupported docker command: $*" >&2
-exit 1
-`,
-    { mode: 0o755 },
+test("rejects proof bundles without score_proof_facts", () => {
+  const proof = buildProofFixture();
+  delete proof.score_proof_facts;
+  assert.throws(() => proofBundleSchema.parse(proof), /score_proof_facts/);
+});
+
+test("rejects proof bundles with mismatched score basis commitments", () => {
+  const proof = buildProofFixture({
+    scoreProofFacts: {
+      ...SCORE_PROOF_FACTS,
+      score_basis_commitment:
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    },
+  });
+  assert.throws(
+    () => proofBundleSchema.parse(proof),
+    /score_basis_commitment/,
   );
-  return { dir, binDir };
-}
+});
 
-async function withFakeDocker(options, callback) {
-  const oldPath = process.env.PATH;
-  const oldOutput = process.env.FAKE_DOCKER_OUTPUT;
-  const fake = await writeFakeDocker(options);
-  process.env.PATH = `${fake.binDir}${path.delimiter}${oldPath}`;
-  process.env.FAKE_DOCKER_OUTPUT = options.output;
-  try {
-    return await callback();
-  } finally {
-    process.env.PATH = oldPath;
-    if (oldOutput === undefined) {
-      delete process.env.FAKE_DOCKER_OUTPUT;
-    } else {
-      process.env.FAKE_DOCKER_OUTPUT = oldOutput;
-    }
-    await fs.rm(fake.dir, { recursive: true, force: true });
-  }
-}
-
-async function runFixture(options = {}) {
-  const fixture = await buildProofFixture(options);
-  return await withFetchFixture(fixture.routes, async (gateway) =>
-    withFakeDocker(
-      {
-        output: fixture.output,
-        inspectDigest: options.inspectDigest,
-      },
-      async () =>
-        await replayProof({
-          proof: "proofcid",
-          ipfsGateway: gateway,
-          format: "json",
-          keepWorkspace: false,
-        }),
-    ),
+test("rejects camelCase proof bundle fields", () => {
+  const camelCaseProof = {
+    score: 0.9,
+    containerImageDigest: IMAGE,
+    challengeSpecCid: "speccid",
+    scoreProofFacts: SCORE_PROOF_FACTS,
+    meta: {
+      challengeId: "fixture-challenge",
+      submissionId: "fixture-submission",
+    },
+  };
+  assert.throws(
+    () => proofBundleSchema.parse(camelCaseProof),
+    /score_proof_facts|containerImageDigest/,
   );
-}
+});
 
-test("replays a public proof bundle and emits receiver contract fields", async () => {
+test("admits private score proofs and reports the public replay boundary", async () => {
   const result = await runFixture();
-  assert.equal(result.status, "matched");
+  assert.equal(result.status, "not_publicly_replayable");
+  assert.equal(result.reason, "private_answer_not_publicly_replayable");
+  assert.equal(result.replay_available, false);
+  assert.equal(result.replay_scope, "challenge_reveal_only");
   assert.equal(result.score, 0.9);
-  assert.equal(result.score_matches, true);
-  assert.equal(result.challenge_spec_cid, "speccid");
-  assert.equal(result.replay_submission_cid, "replaycid");
+  assert.equal(result.challenge_spec_cid, "ipfs://speccid");
   assert.equal(result.runtime_profile_id, "official_compiled_runtime");
   assert.equal(result.image_digest, IMAGE);
+  assert.deepEqual(result.score_proof_facts, SCORE_PROOF_FACTS);
   assert.match(result.runtime_manifest_schema_sha256, /^[a-f0-9]{64}$/);
   assert.match(result.proof_bundle_schema_sha256, /^[a-f0-9]{64}$/);
-  assert.equal(
-    result.determinism_env_sha256,
-    computeDeterminismEnvSha256(DETERMINISM_ENV),
-  );
-  assert.equal(result.program_abi_version, "python-v1");
   assert.deepEqual(result.supported_program_abi_versions, ["python-v1"]);
-  assert.equal(result.abi_supported, true);
-  assert.equal(result.input_hash_matches, true);
-  assert.equal(result.output_hash_matches, true);
-  assert.equal(result.container_digest_matches, true);
   assert.deepEqual(result.mismatches, []);
 });
 
-test("replays from an arbitrary user working directory", async () => {
+test("admits private score proofs from an arbitrary user working directory", async () => {
   const userCwd = await createTempDir();
   try {
     const result = await withCwd(userCwd, async () => await runFixture());
-    assert.equal(result.status, "matched");
+    assert.equal(result.status, "not_publicly_replayable");
     assert.match(result.runtime_manifest_schema_sha256, /^[a-f0-9]{64}$/);
   } finally {
     await fs.rm(userCwd, { recursive: true, force: true });
   }
 });
 
-test("rejects proof bundles without replay_submission_cid", async () => {
-  const fixture = await buildProofFixture({ omitReplaySubmissionCid: true });
-  await withFetchFixture(fixture.routes, async (gateway) => {
-    await assert.rejects(
-      replayProof({
-        proof: "proofcid",
-        ipfsGateway: gateway,
-        format: "json",
-        keepWorkspace: false,
-      }),
-      /replay_submission_cid/,
-    );
-  });
-});
-
-test("rejects camelCase proof bundle fields", async () => {
-  const fixture = await buildProofFixture();
-  const camelCaseProof = {
-    score: fixture.proof.score,
-    inputHash: fixture.proof.input_hash,
-    outputHash: fixture.proof.output_hash,
-    containerImageDigest: fixture.proof.container_image_digest,
-    challengeSpecCid: fixture.proof.challenge_spec_cid,
-    replaySubmissionCid: fixture.proof.replay_submission_cid,
-    meta: {
-      challengeId: fixture.proof.meta.challenge_id,
-      submissionId: fixture.proof.meta.submission_id,
+test("reports proof hash mismatches without attempting public replay", async () => {
+  const expectedProofHash =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const result = await runFixture({ expectedProofHash });
+  assert.equal(result.status, "mismatched");
+  assert.equal(result.reason, "proof_hash_mismatch");
+  assert.deepEqual(result.mismatches, [
+    {
+      field: "proof_hash",
+      expected: expectedProofHash,
+      actual: result.proof_hash,
     },
-  };
-  assert.throws(() => proofBundleSchema.parse(camelCaseProof), /input_hash/);
+  ]);
 });
 
-test("admits the real challenge 7 emitted proof bundle", async () => {
+test("admits the checked-in challenge 7 private proof bundle fixture", async () => {
   const proof = JSON.parse(
     await fs.readFile("test/fixtures/challenge-7-proof-bundle.json", "utf8"),
   );
   const parsed = proofBundleSchema.parse(proof);
   assert.equal(parsed.score, 0.3712485568109655);
-  assert.equal(parsed.challenge_spec_cid, "ipfs://bafkreig6xq3nsvmf2qoj7witf2jnhvhn7bj7m7hcwqzgwczxsskwlss3we");
-  assert.equal(parsed.replay_submission_cid, "ipfs://bafkreihtg4ylrnwilszkyupewgtnzahmu6vt4m4j3van4nhydf7vayaii4");
+  assert.equal(
+    parsed.challenge_spec_cid,
+    "ipfs://bafkreig6xq3nsvmf2qoj7witf2jnhvhn7bj7m7hcwqzgwczxsskwlss3we",
+  );
+  assert.equal(parsed.score_proof_facts.kind, "score_proof_facts");
   assert.equal(parsed.meta.challenge_id, "7");
   assert.equal(
     parsed.meta.submission_id,
@@ -485,11 +425,10 @@ test("stages schema v6 private replay artifacts for evaluation and scoring asset
   }));
   spec.execution.scoring_asset_sources = [];
 
-  const submissionBytes = bytes("id,prediction\n1,0.9\n");
   const replayBundle = createStoredZipArchive([
     {
       relativePath: "submission/answer/answer.csv",
-      bytes: submissionBytes,
+      bytes: bytes("id,prediction\n1,0.9\n"),
     },
   ]);
   const privateReplayArtifacts = [
@@ -520,7 +459,10 @@ test("stages schema v6 private replay artifacts for evaluation and scoring asset
   try {
     await withFetchFixture(
       Object.fromEntries(
-        Object.entries(files).map(([cid, content]) => [cid, Buffer.from(content)]),
+        Object.entries(files).map(([cid, content]) => [
+          cid,
+          Buffer.from(content),
+        ]),
       ),
       async (gateway) => {
         const inputDir = path.join(tempDir, "input");
@@ -550,19 +492,11 @@ test("stages schema v6 private replay artifacts for evaluation and scoring asset
   }
 });
 
-test("rejects unsupported program ABI versions before running Docker", async () => {
-  const fixture = await buildProofFixture({ programAbiVersion: "python-v2" });
-  await withFetchFixture(fixture.routes, async (gateway) => {
-    await assert.rejects(
-      replayProof({
-        proof: "proofcid",
-        ipfsGateway: gateway,
-        format: "json",
-        keepWorkspace: false,
-      }),
-      /Program ABI python-v2 is not supported/,
-    );
-  });
+test("computes deterministic environment hashes with stable key ordering", () => {
+  assert.equal(
+    computeDeterminismEnvSha256({ TZ: "UTC", LANG: "C.UTF-8" }),
+    computeDeterminismEnvSha256({ LANG: "C.UTF-8", TZ: "UTC" }),
+  );
 });
 
 test("rejects stale vendored runtime schema hashes", async () => {
@@ -605,56 +539,6 @@ test("rejects stale vendored proof bundle schema hashes", async () => {
   } finally {
     await fs.rm(rootDir, { recursive: true, force: true });
   }
-});
-
-test("rejects image digest mismatches resolved by Docker", async () => {
-  await assert.rejects(
-    runFixture({ inspectDigest: OTHER_IMAGE }),
-    /Runtime image digest mismatch/,
-  );
-});
-
-test("reports score mismatches without hiding proof hash checks", async () => {
-  const output = JSON.stringify({
-    ok: true,
-    score: 0.8,
-    details: { final_score: 0.8 },
-  });
-  const result = await runFixture({
-    output,
-    proofScore: 0.9,
-    outputHash: sha256Hex(output),
-  });
-  assert.equal(result.status, "mismatched");
-  assert.equal(result.score_matches, false);
-  assert.deepEqual(result.mismatches, [
-    {
-      field: "score",
-      expected: 0.9,
-      actual: 0.8,
-    },
-  ]);
-});
-
-test("reports output hash mismatches", async () => {
-  const result = await runFixture({
-    outputHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  });
-  assert.equal(result.status, "mismatched");
-  assert.equal(result.output_hash_matches, false);
-  assert.deepEqual(result.mismatches, [
-    {
-      field: "output_hash",
-      expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      actual: sha256Hex(
-        JSON.stringify({
-          ok: true,
-          score: 0.9,
-          details: { final_score: 0.9 },
-        }),
-      ),
-    },
-  ]);
 });
 
 let failures = 0;

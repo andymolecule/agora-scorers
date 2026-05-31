@@ -1,61 +1,15 @@
 {
   "score": 0.3712485568109655,
-  "input_hash": "35076556a7e615c66430901243f61c46f8eb9c96c151b041c51558b0054d675d",
-  "output_hash": "292751471cfbcf40f4cb7f16a7f21f313241c72471f75b4f450cab55d1adccd5",
   "container_image_digest": "ghcr.io/moleculeprotocol/agora-scorer-compiled@sha256:3ed16edffc947f550df26ae85751e150b59f1170a08a5bf836326d563452672e",
   "challenge_spec_cid": "ipfs://bafkreig6xq3nsvmf2qoj7witf2jnhvhn7bj7m7hcwqzgwczxsskwlss3we",
-  "replay_submission_cid": "ipfs://bafkreihtg4ylrnwilszkyupewgtnzahmu6vt4m4j3van4nhydf7vayaii4",
-  "timelocked_submission": {
-    "result_cid": "ipfs://bafkreiayhukc3wyttjs57jelp2psx2i4jkgm454csvk7pzyespqux4yc24",
-    "payload_commitment": "0x46771f17c90654ec1df3c020d2c7d528a33f110ca54dc311b2adf72c84f30add",
-    "submitted_commitment": "0x32cfb83d5c9085c348c191c1316f64afb0a3b9c9269488c3ca958c075529a175",
-    "manifest_digest": "0fa4b0a085b856820d1670e068ffe59fc1994465ee23e83afbf0c481834d4e84",
-    "encrypted_manifest_digest": "8569d21da39b15ec49682aceac67323531123c6ad310d03fee8707b351f459ce",
-    "reveal_policy": {
-      "kind": "drand_round",
-      "network": "quicknet",
-      "chain_hash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
-      "round": 29108427,
-      "not_before": "2026-05-30T08:10:47.000Z"
-    },
-    "artifact_set_digest": "sha256:b1dfcdf31884c6bfff13c9cb06aa81c0f61367e97b9d927ae867250108ceaefe",
-    "artifact_set_digest_version": "submission_artifact_set_sha256_v1",
-    "artifacts": [
-      {
-        "role": "candidate",
-        "present": true,
-        "file_name": "candidate.fasta",
-        "mime_type": "text/plain",
-        "size_bytes": 75,
-        "sha256": "497615aceec3868a8e401e9b5dafb3efbb6f49a72a278739d068ebc49ba77e0c",
-        "staged_relative_path": "submission/candidate/candidate.fasta"
-      }
-    ]
+  "score_proof_facts": {
+    "kind": "score_proof_facts",
+    "scoring_profile_id": "official_compiled_runtime",
+    "score_basis_commitment": "0xe830259722b2e3790bdaa1e16a01416d081b9be01997f0509f9943b7e9c00e8f",
+    "runtime_manifest_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "private_input_commitment": "0x4bf406c6aa679448dc09fe15365b166e8c9e6c1cee919e9fb0900c848bd46a89",
+    "artifact_digest_policy": "private_no_public_equality_digest"
   },
-  "timelocked_private_artifacts": [
-    {
-      "lane": "evaluation",
-      "role": "reference_set",
-      "artifact_id": "artifact-1",
-      "sealed_ref": {
-        "kind": "timelocked_private_artifact",
-        "uri": "ipfs://bafkreiebogia4hhpz3zfshqxwxu26ok6lln7xpryfu4lrmzeqcqfbyvrj4",
-        "envelope_sha256": "8171900e1cefcef2591e17b5e9af395e5adbfbbe382d38b8b32480a050e2b14f",
-        "reveal_policy": {
-          "kind": "drand_round",
-          "network": "quicknet",
-          "chain_hash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
-          "round": 29108427,
-          "not_before": "2026-05-30T08:10:47.451Z"
-        }
-      },
-      "manifest_digest": "a447921032a25f055b0505617c4ba47f63160b44decd8e47a8988f9890dcfc36",
-      "size_bytes": 157,
-      "sha256": "17d955913fe5d52b2f9af4422d0b25da829e6fe83f718955e26e3fbaa66b2a7b",
-      "staged_relative_path": "evaluation/reference_set/reference_set.fasta",
-      "replay_artifact_uri": "ipfs://bafkreiax3fkzcp7f2uvs7gxuiiwqwjo2qkpg72b7ogevlytoh65km2zkpm"
-    }
-  ],
   "meta": {
     "challenge_id": "7",
     "submission_id": "bc52fe65-5246-4aa4-8aa3-00e4dfe76ed4"

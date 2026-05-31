@@ -8,7 +8,7 @@ function usage() {
   return `Usage: agora-replay --proof <cid> [--format json] [--ipfs-gateway <url>] [--expected-proof-hash <0x...>]
 
 Options:
-  --proof <cid>                 Public Agora proof bundle CID.
+  --proof <cid>                 Public Agora score proof bundle CID.
   --format json                 Output format. Only json is supported.
   --ipfs-gateway <url>          IPFS gateway base URL. Defaults to ${DEFAULT_IPFS_GATEWAY}.
   --expected-proof-hash <hex>   Optional on-chain proof hash to compare.
@@ -78,7 +78,7 @@ export async function runCli(argv) {
 
     const result = await replayProof(options);
     console.log(JSON.stringify(result, null, 2));
-    if (result.status !== "matched") {
+    if (result.status === "mismatched") {
       process.exitCode = 2;
     }
   } catch (error) {

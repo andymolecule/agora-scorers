@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { fail } from "./errors.js";
 
@@ -5,35 +6,62 @@ const hexSha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const hexBytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const trimmedStringSchema = z.string().trim().min(1);
 const uriSchema = z.string().trim().min(1);
+const ipfsOrHttpsUriSchema = trimmedStringSchema.refine(
+  (value) => value.startsWith("ipfs://") || /^https:\/\/\S+$/.test(value),
+  "value must start with ipfs:// or be a valid https:// URL",
+);
 const artifactRoleSchema = trimmedStringSchema.regex(/^[a-z][a-z0-9_]*$/);
 const scoringAssetKindSchema = z.enum(["program", "config", "bundle", "document"]);
+const OPTIMISTIC_PRIVATE_SCORING_MODEL = "optimistic_private_scoring";
 
-const timelockedReplayArtifactSchema = z
+function normalizeJsonValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeJsonValue(entry));
+  }
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeJsonValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function sha256Hex32(preimage) {
+  return `0x${createHash("sha256").update(JSON.stringify(normalizeJsonValue(preimage))).digest("hex")}`;
+}
+
+export function computeScoreBasisCommitment(input) {
+  return sha256Hex32({
+    challenge_spec_cid: input.challengeSpecCid,
+    container_image_digest: input.containerImageDigest,
+    kind: "score_basis_commitment",
+    private_input_commitment: input.privateInputCommitment,
+    runtime_manifest_digest: input.runtimeManifestDigest,
+    scoring_model: OPTIMISTIC_PRIVATE_SCORING_MODEL,
+    scoring_profile_id: input.scoringProfileId,
+  });
+}
+
+const scoreProofFactsSchema = z
   .object({
-    lane: z.enum(["evaluation", "scoring_asset"]),
-    role: artifactRoleSchema,
-    artifact_id: trimmedStringSchema.optional(),
-    replay_artifact_uri: uriSchema,
-    staged_relative_path: trimmedStringSchema.optional(),
-    file_name: trimmedStringSchema.optional(),
-    size_bytes: z.number().int().nonnegative().optional(),
-    sha256: hexSha256Schema.optional(),
+    kind: z.literal("score_proof_facts"),
+    scoring_profile_id: trimmedStringSchema,
+    score_basis_commitment: hexBytes32Schema,
+    runtime_manifest_digest: hexSha256Schema,
+    private_input_commitment: hexBytes32Schema,
+    artifact_digest_policy: z.literal("private_no_public_equality_digest"),
   })
-  .passthrough();
+  .strict();
 
 export const proofBundleSchema = z
   .object({
     score: z.number().finite(),
-    input_hash: hexSha256Schema,
-    output_hash: hexSha256Schema,
     container_image_digest: trimmedStringSchema,
     scorer_log: z.string().optional(),
-    challenge_spec_cid: trimmedStringSchema,
-    replay_submission_cid: trimmedStringSchema,
-    timelocked_submission: z.object({}).passthrough().optional(),
-    timelocked_private_artifacts: z
-      .array(timelockedReplayArtifactSchema)
-      .optional(),
+    challenge_spec_cid: ipfsOrHttpsUriSchema,
+    score_proof_facts: scoreProofFactsSchema,
     measurement_provenance_receipts: z.array(z.unknown()).optional(),
     meta: z
       .object({
@@ -42,7 +70,27 @@ export const proofBundleSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((proof, ctx) => {
+    const expectedScoreBasisCommitment = computeScoreBasisCommitment({
+      challengeSpecCid: proof.challenge_spec_cid,
+      containerImageDigest: proof.container_image_digest,
+      runtimeManifestDigest: proof.score_proof_facts.runtime_manifest_digest,
+      scoringProfileId: proof.score_proof_facts.scoring_profile_id,
+      privateInputCommitment: proof.score_proof_facts.private_input_commitment,
+    });
+    if (
+      proof.score_proof_facts.score_basis_commitment.toLowerCase() !==
+      expectedScoreBasisCommitment
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["score_proof_facts", "score_basis_commitment"],
+        message:
+          "score_basis_commitment must match challenge_spec_cid, container_image_digest, runtime_manifest_digest, scoring_profile_id, and private_input_commitment",
+      });
+    }
+  });
 
 const artifactFileSchema = z
   .object({
