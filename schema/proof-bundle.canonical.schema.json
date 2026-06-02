@@ -611,6 +611,9 @@
           "const": "score_proof_facts",
           "type": "string"
         },
+        "peer_snapshot_commitment": {
+          "type": "string"
+        },
         "private_input_commitment": {
           "type": "string"
         },
