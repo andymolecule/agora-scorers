@@ -1392,30 +1392,55 @@
     "evaluation_bindings": {
       "default": [],
       "items": {
-        "additionalProperties": false,
-        "properties": {
-          "artifact_id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "artifact"
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "artifact_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "artifact"
+                ],
+                "type": "string"
+              },
+              "role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "role",
+              "artifact_id"
             ],
-            "type": "string"
+            "type": "object"
           },
-          "role": {
-            "minLength": 1,
-            "pattern": "^[a-z][a-z0-9_]*$",
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "deadline_peer_snapshot"
+                ],
+                "type": "string"
+              },
+              "role": {
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "role"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "kind",
-          "role",
-          "artifact_id"
-        ],
-        "type": "object"
+        ]
       },
       "type": "array"
     },
