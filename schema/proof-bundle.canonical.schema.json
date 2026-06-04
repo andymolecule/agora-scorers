@@ -267,15 +267,18 @@
             "additionalProperties": false,
             "properties": {
               "adapter_digest": {
-                "const": "adaptyv_foundry_provider_api_adapter_v1_a9044f9fbb7a849478afb004539193656222e0ea6c88b0b917175ee82b1eaf5e",
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
                 "type": "string"
               },
               "adapter_id": {
-                "const": "adaptyv_foundry_provider_api_v1",
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
                 "type": "string"
               },
               "adapter_version": {
-                "const": "adaptyv_foundry_provider_api_adapter_v1",
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
                 "type": "string"
               },
               "assurance_tier": {
@@ -341,23 +344,24 @@
                       "type": "integer"
                     },
                     "source_type": {
-                      "enum": [
-                        "experiment",
-                        "result",
-                        "sequence",
-                        "data_package"
-                      ],
+                      "minLength": 1,
+                      "pattern": "^[a-z][a-z0-9_:-]*$",
                       "type": "string"
                     }
                   },
                   "required": ["source_type", "sha256", "size_bytes"],
                   "type": "object"
                 },
-                "minItems": 2,
+                "minItems": 1,
                 "type": "array"
               },
+              "lookup_reference_sha256": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
               "provider_id": {
-                "const": "adaptyv_foundry",
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_:-]*$",
                 "type": "string"
               },
               "receipt_sha256": {
@@ -396,55 +400,34 @@
               "source": {
                 "additionalProperties": false,
                 "properties": {
-                  "data_package_checked": {
-                    "type": "boolean"
-                  },
-                  "experiment_created_at": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  "experiment_status": {
-                    "const": "done",
-                    "type": "string"
-                  },
-                  "experiment_type": {
-                    "enum": [
-                      "affinity",
-                      "screening",
-                      "thermostability",
-                      "fluorescence",
-                      "expression",
-                      "epitope_binning",
-                      "enzyme_activity"
-                    ],
-                    "type": "string"
-                  },
-                  "result_created_at": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  "result_type": {
-                    "enum": ["affinity", "thermostability"],
-                    "type": "string"
-                  },
-                  "results_status": {
-                    "const": "all",
-                    "type": "string"
-                  },
-                  "sequence_checked": {
-                    "type": "boolean"
+                  "checked_sources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "checked_state": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_:-]*$",
+                          "type": "string"
+                        },
+                        "provider_kind": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_:-]*$",
+                          "type": "string"
+                        },
+                        "source_type": {
+                          "minLength": 1,
+                          "pattern": "^[a-z][a-z0-9_:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": ["source_type", "checked_state"],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
                   }
                 },
-                "required": [
-                  "experiment_type",
-                  "result_type",
-                  "experiment_status",
-                  "results_status",
-                  "experiment_created_at",
-                  "result_created_at",
-                  "sequence_checked",
-                  "data_package_checked"
-                ],
+                "required": ["checked_sources"],
                 "type": "object"
               },
               "status": {
@@ -570,6 +553,7 @@
               "verifier_version",
               "receipt_sha256",
               "verification_mode",
+              "lookup_reference_sha256",
               "source",
               "fetched_evidence",
               "adapter_id",
