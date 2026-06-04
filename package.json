@@ -14,6 +14,7 @@
     "check:agora-main-schema-sync": "node scripts/check-agora-main-schema-sync.mjs",
     "check:replay-boundary": "node scripts/check-replay-boundary.mjs",
     "check:release-provenance": "node scripts/check-release-provenance.mjs",
+    "check:compiled-image": "node scripts/run-compiled-image-smoke.mjs",
     "check:rdkit-image": "node scripts/run-rdkit-image-smoke.mjs"
   },
   "dependencies": {

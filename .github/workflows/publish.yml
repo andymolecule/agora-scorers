@@ -114,6 +114,9 @@ jobs:
       - name: Run container guard
         run: node scripts/check-scorer-containers.mjs
 
+      - name: Run compiled image smoke
+        run: npm run check:compiled-image
+
       - name: Run RDKit image smoke
         run: npm run check:rdkit-image
 
