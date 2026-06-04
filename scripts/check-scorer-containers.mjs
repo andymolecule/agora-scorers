@@ -7,6 +7,11 @@ const disallowedAssetPattern =
   /\.(csv|tsv|jsonl|parquet|arrow|feather|npy|npz|pt|pth|ckpt|onnx|pkl|pickle|joblib|bin|h5|hdf5|tar|tgz|gz|bz2|xz|zip)$/i;
 
 const scorerDirs = ["agora-scorer-compiled", "agora-scorer-rdkit"];
+const compiledRequirementsPath = path.join(
+  rootDir,
+  "agora-scorer-compiled",
+  "requirements.txt",
+);
 const rdkitRequirementsPath = path.join(
   rootDir,
   "agora-scorer-rdkit",
@@ -14,6 +19,8 @@ const rdkitRequirementsPath = path.join(
 );
 const disallowedRequirementPattern =
   /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|scipy|sklearn|scikit-learn)\b/i;
+const disallowedCompiledRequirementPattern =
+  /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|opensol|aggrescan|boltz)\b/i;
 
 function fail(message) {
   throw new Error(
@@ -119,6 +126,30 @@ function validateRdkitRequirements() {
   }
 }
 
+function validateCompiledRequirements() {
+  if (!fs.existsSync(compiledRequirementsPath)) {
+    fail("Missing agora-scorer-compiled/requirements.txt.");
+  }
+  const requirements = fs.readFileSync(compiledRequirementsPath, "utf8");
+  for (const expected of [
+    "toxinpred3==1.4",
+    "scikit-learn==1.2.2",
+    "pandas==2.2.3",
+    "numpy==1.26.4",
+    "scipy==1.11.4",
+  ]) {
+    if (!requirements.includes(expected)) {
+      fail(`Compiled requirements must include exact pin ${expected}.`);
+    }
+  }
+  if (!requirements.includes("--hash=sha256:")) {
+    fail("Compiled requirements must use hash-locked package pins.");
+  }
+  if (disallowedCompiledRequirementPattern.test(requirements)) {
+    fail("Compiled requirements include an out-of-scope science package.");
+  }
+}
+
 for (const name of scorerDirs) {
   const containerDir = path.join(rootDir, name);
   if (!fs.existsSync(containerDir)) {
@@ -128,5 +159,6 @@ for (const name of scorerDirs) {
 }
 
 validateRdkitRequirements();
+validateCompiledRequirements();
 
 console.log("scorer container guard passed");
