@@ -92,7 +92,7 @@ Official images:
 | Container | Runtime profile id | What it does |
 | --- | --- | --- |
 | `agora-scorer-compiled` | `official_compiled_runtime` | Executes one staged compiled program plus any staged scoring config/bundles against the mounted runtime manifest |
-| `agora-scorer-rdkit` | `rdkit_python_runtime` | Executes the same Python-v1 mounted contract with RDKit available for deterministic molecule artifact checks |
+| `agora-scorer-rdkit` | `rdkit_python_runtime` | Executes the same Python-v1 mounted contract with RDKit plus the pinned OpenSOL XGBoost/RDKit-2D prediction assets available for deterministic molecule artifact checks |
 
 The runtime profile owns the deterministic child-process environment. The
 current official profile pins `LANG`, `LC_ALL`, `PYTHONHASHSEED`,
@@ -113,9 +113,18 @@ Python image. It pins:
 - `rdkit==2025.3.1`
 - `numpy==2.4.4`
 - `Pillow==12.2.0`
+- `xgboost==3.0.5`
+- `pandas==2.3.3`
+- `scipy==1.17.1`
+- `joblib==1.5.3`
+- transitive date/time pins required by pandas
 
-No apt packages, datasets, model weights, notebooks, docking engines, or
-scoring-time package installs are added.
+The image also includes the public OpenSOL model
+`Models/xgboost_rdkit_2d_clustering_model.json` from
+`sutropub/OpenSOL@89e6d30d0ce84aaf9ee2bd9c93619d3c2a4a95c4`, pinned at
+SHA-256 `bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0`.
+No apt packages, raw CCDC/CSD datasets, notebooks, docking engines, alternate
+OpenSOL models, DNN assets, or scoring-time package installs are added.
 
 ## Repo Layout
 
@@ -152,20 +161,22 @@ Official runtime files:
 - `agora-scorer-compiled/test_score.py`
   - scorer regression tests for the official compiled runtime
 - `agora-scorer-rdkit/Dockerfile`
-  - installs only the hash-locked RDKit dependency envelope
+  - installs only the hash-locked RDKit/OpenSOL dependency envelope
   - reuses the compiled runtime entrypoint and staged Python-v1 SDK path
 - `agora-scorer-rdkit/requirements.txt`
   - records the exact wheel hashes accepted for linux/amd64 and linux/arm64
 
 ## Code-Only Policy
 
-Official runtime images must stay public and code-only. This repo must not ship:
+Official runtime images must stay public and code-only except for explicitly
+allowlisted public runtime assets such as the pinned OpenSOL model in
+`agora-scorer-rdkit/OPENSOL-PROVENANCE.md`. This repo must not ship:
 
 - hidden evaluation labels
 - private reference outputs
 - benchmark datasets
 - harness payloads
-- large embedded assets
+- large embedded assets outside the allowlist
 
 Those belong in mounted evaluation artifacts or scoring assets, not in the
 image. The guard in `scripts/check-scorer-containers.mjs` enforces that rule.

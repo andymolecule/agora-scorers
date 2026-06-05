@@ -118,11 +118,84 @@ def load_json_file(path, *, label="JSON file"):
 
 function rdkitProgramSource() {
   return String.raw`
+import csv
+import hashlib
+import math
 import os
+import subprocess
+import tempfile
+from pathlib import Path
 
 from agora_runtime import load_json_file, load_runtime_context, resolve_submission_artifact, write_score
 from rdkit import Chem, rdBase
 from rdkit.Chem import Descriptors, rdMolDescriptors
+import joblib
+import pandas
+import scipy
+import xgboost
+
+
+OPENSOL_MODEL_SHA256 = "bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0"
+
+
+def _sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _run_opensol_smoke(smiles):
+    opensol_home = Path(os.environ["OPENSOL_HOME"])
+    opensol_script = opensol_home / "Scripts" / "solubility_model.py"
+    opensol_model = opensol_home / "Models" / "xgboost_rdkit_2d_clustering_model.json"
+    assert _sha256(opensol_model) == OPENSOL_MODEL_SHA256
+
+    with tempfile.TemporaryDirectory(prefix="opensol-smoke-") as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        input_csv = tmpdir_path / "input.csv"
+        output_csv = tmpdir_path / "output.csv"
+        input_csv.write_text(
+            "SMILES,knn_mean,knn_max\n" + smiles + ",0.0,0.0\n",
+            encoding="utf-8",
+        )
+        completed = subprocess.run(
+            [
+                "python",
+                str(opensol_script),
+                "-j",
+                "Prediction",
+                "-m",
+                "xgboost",
+                "-dscr",
+                "rdkit_2d",
+                "-s",
+                "clustering",
+                "-i",
+                str(input_csv),
+                "-o",
+                str(output_csv),
+                "-c",
+                "False",
+            ],
+            cwd=str(opensol_home / "Scripts"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "OpenSOL smoke failed with exit "
+                + str(completed.returncode)
+                + "\nstdout:\n"
+                + completed.stdout
+                + "\nstderr:\n"
+                + completed.stderr
+            )
+        with output_csv.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == 1
+        log_s = float(rows[0]["xgboost_logS"])
+        assert math.isfinite(log_s)
+        return round(log_s, 6)
 
 
 runtime_context = load_runtime_context()
@@ -132,10 +205,17 @@ ethanol = Chem.MolFromSmiles(smiles[0])
 benzene = Chem.MolFromSmiles(smiles[1])
 assert ethanol is not None and benzene is not None
 benzene_bits = rdMolDescriptors.GetMorganFingerprintAsBitVect(benzene, 2, nBits=128).GetNumOnBits()
+opensol_ethanol_log_s = _run_opensol_smoke(Chem.MolToSmiles(ethanol, canonical=True, isomericSmiles=True))
 details = {
     "final_score": 1.0,
     "runtime_profile_id": os.environ["AGORA_RUNTIME_PROFILE_ID"],
     "rdkit_version": rdBase.rdkitVersion,
+    "xgboost_version": xgboost.__version__,
+    "pandas_version": pandas.__version__,
+    "scipy_version": scipy.__version__,
+    "joblib_version": joblib.__version__,
+    "opensol_model_sha256": OPENSOL_MODEL_SHA256,
+    "opensol_ethanol_log_s": opensol_ethanol_log_s,
     "ethanol_canonical_smiles": Chem.MolToSmiles(ethanol),
     "ethanol_heavy_atoms": ethanol.GetNumHeavyAtoms(),
     "ethanol_mol_wt": round(Descriptors.MolWt(ethanol), 3),
@@ -251,6 +331,12 @@ async function stageSmokeWorkspace(workspace, runtimeImage) {
       summary_fields: [
         { key: "runtime_profile_id", value_type: "string" },
         { key: "rdkit_version", value_type: "string" },
+        { key: "xgboost_version", value_type: "string" },
+        { key: "pandas_version", value_type: "string" },
+        { key: "scipy_version", value_type: "string" },
+        { key: "joblib_version", value_type: "string" },
+        { key: "opensol_model_sha256", value_type: "string" },
+        { key: "opensol_ethanol_log_s", value_type: "number" },
         { key: "ethanol_canonical_smiles", value_type: "string" },
         { key: "ethanol_heavy_atoms", value_type: "number" },
         { key: "ethanol_mol_wt", value_type: "number" },
@@ -277,6 +363,12 @@ function assertSmokeOutput(payload) {
   const expectedDetails = {
     runtime_profile_id: "rdkit_python_runtime",
     rdkit_version: "2025.03.1",
+    xgboost_version: "3.0.5",
+    pandas_version: "2.3.3",
+    scipy_version: "1.17.1",
+    joblib_version: "1.5.3",
+    opensol_model_sha256:
+      "bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0",
     ethanol_canonical_smiles: "CCO",
     ethanol_heavy_atoms: 3,
     ethanol_mol_wt: 46.069,
@@ -294,6 +386,12 @@ function assertSmokeOutput(payload) {
         )}, found ${JSON.stringify(payload.details?.[key])}.`,
       );
     }
+  }
+  const logS = payload.details?.opensol_ethanol_log_s;
+  if (typeof logS !== "number" || !Number.isFinite(logS)) {
+    throw new Error(
+      `Unexpected OpenSOL smoke logS detail: found ${JSON.stringify(logS)}.`,
+    );
   }
 }
 
@@ -340,7 +438,7 @@ async function main() {
     const payload = JSON.parse(await fs.readFile(outputPath, "utf8"));
     assertSmokeOutput(payload);
     console.log(
-      "rdkit image smoke passed: rdkit_python_runtime imported RDKit 2025.03.1 and produced deterministic fixture details",
+      "rdkit image smoke passed: rdkit_python_runtime imported RDKit 2025.03.1 and executed pinned OpenSOL XGBoost/RDKit-2D prediction",
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });

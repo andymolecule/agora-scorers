@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const rootDir = process.cwd();
@@ -18,14 +19,52 @@ const rdkitRequirementsPath = path.join(
   "requirements.txt",
 );
 const disallowedRequirementPattern =
-  /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|scipy|sklearn|scikit-learn)\b/i;
+  /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|sklearn|scikit-learn)\b/i;
 const disallowedCompiledRequirementPattern =
   /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|opensol|aggrescan|boltz)\b/i;
+const opensolSourceCommit = "89e6d30d0ce84aaf9ee2bd9c93619d3c2a4a95c4";
+const opensolModelRelativePath =
+  "agora-scorer-rdkit/opensol/Models/xgboost_rdkit_2d_clustering_model.json";
+const allowedEmbeddedAssets = new Map([
+  [
+    opensolModelRelativePath,
+    {
+      maxBytes: 2_000_000,
+      sha256: "bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0",
+    },
+  ],
+]);
+const opensolPinnedFiles = new Map([
+  [
+    "agora-scorer-rdkit/opensol/Scripts/solubility_model.py",
+    "a29ace3e9b7d8b2bef5f0cb7d88aaccf0378bbbed9de8b0df47bdcd9ea5977c2",
+  ],
+  [
+    "agora-scorer-rdkit/opensol/Scripts/Tools.py",
+    "4e10b240fc209e2d916a90c1faec97930ab56e409c146a813117104dd72b256a",
+  ],
+  [
+    "agora-scorer-rdkit/opensol/LICENSE.txt",
+    "8ffec4c17335dc96b8c5e4679bb31905b0e51435d55bd80466eb69210c61fa61",
+  ],
+  [
+    opensolModelRelativePath,
+    "bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0",
+  ],
+]);
 
 function fail(message) {
   throw new Error(
-    `${message} Next step: keep scorer images code-only and move hidden evaluation artifacts or large assets into the evaluation bundle mounted at runtime.`,
+    `${message} Next step: keep scorer images limited to code plus explicitly allowlisted runtime assets, and move hidden evaluation artifacts or large assets into the evaluation bundle mounted at runtime.`,
   );
+}
+
+function sha256(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function relativeToRoot(filePath) {
+  return path.relative(rootDir, filePath).split(path.sep).join("/");
 }
 
 function walkFiles(dir) {
@@ -74,7 +113,11 @@ function validateDockerfile(dockerfilePath) {
           `Dockerfile ${path.relative(rootDir, dockerfilePath)} copies from outside its scorer directory (${source}).`,
         );
       }
-      if (disallowedAssetPattern.test(source)) {
+      const relativeSource = source.split(path.sep).join("/");
+      if (
+        disallowedAssetPattern.test(source) &&
+        !allowedEmbeddedAssets.has(relativeSource)
+      ) {
         fail(
           `Dockerfile ${path.relative(rootDir, dockerfilePath)} copies dataset-like asset ${source}.`,
         );
@@ -93,8 +136,21 @@ function validateContainerDir(containerDir) {
 
   const files = walkFiles(containerDir);
   for (const filePath of files) {
-    const relativePath = path.relative(rootDir, filePath);
+    const relativePath = relativeToRoot(filePath);
     const stats = fs.statSync(filePath);
+    const allowedAsset = allowedEmbeddedAssets.get(relativePath);
+
+    if (allowedAsset) {
+      if (stats.size > allowedAsset.maxBytes) {
+        fail(
+          `Allowlisted runtime asset ${relativePath} is ${stats.size} bytes, which exceeds ${allowedAsset.maxBytes} bytes.`,
+        );
+      }
+      if (sha256(filePath) !== allowedAsset.sha256) {
+        fail(`Allowlisted runtime asset ${relativePath} does not match its pinned SHA-256.`);
+      }
+      continue;
+    }
 
     if (stats.size > maxEmbeddedAssetBytes) {
       fail(
@@ -113,7 +169,19 @@ function validateRdkitRequirements() {
     fail("Missing agora-scorer-rdkit/requirements.txt.");
   }
   const requirements = fs.readFileSync(rdkitRequirementsPath, "utf8");
-  for (const expected of ["rdkit==2025.3.1", "numpy==2.4.4", "Pillow==12.2.0"]) {
+  for (const expected of [
+    "rdkit==2025.3.1",
+    "numpy==2.4.4",
+    "Pillow==12.2.0",
+    "xgboost==3.0.5",
+    "pandas==2.3.3",
+    "scipy==1.17.1",
+    "joblib==1.5.3",
+    "python-dateutil==2.9.0.post0",
+    "pytz==2025.2",
+    "tzdata==2025.2",
+    "six==1.17.0",
+  ]) {
     if (!requirements.includes(expected)) {
       fail(`RDKit requirements must include exact pin ${expected}.`);
     }
@@ -123,6 +191,54 @@ function validateRdkitRequirements() {
   }
   if (disallowedRequirementPattern.test(requirements)) {
     fail("RDKit requirements include a broad or out-of-scope science package.");
+  }
+}
+
+function validateOpenSolAssets() {
+  const opensolDir = path.join(rootDir, "agora-scorer-rdkit", "opensol");
+  if (!fs.existsSync(opensolDir)) {
+    fail("Missing pinned OpenSOL runtime assets for rdkit_python_runtime.");
+  }
+  const datasetsDir = path.join(opensolDir, "Datasets");
+  if (fs.existsSync(datasetsDir)) {
+    fail("OpenSOL runtime assets must not bundle Datasets/ or CCDC/CSD-derived data.");
+  }
+  for (const [relativePath, expectedHash] of opensolPinnedFiles.entries()) {
+    const filePath = path.join(rootDir, relativePath);
+    if (!fs.existsSync(filePath)) {
+      fail(`Missing pinned OpenSOL file ${relativePath}.`);
+    }
+    const actualHash = sha256(filePath);
+    if (actualHash !== expectedHash) {
+      fail(
+        `Pinned OpenSOL file ${relativePath} SHA-256 mismatch: expected ${expectedHash}, found ${actualHash}.`,
+      );
+    }
+  }
+
+  const dockerfile = fs.readFileSync(
+    path.join(rootDir, "agora-scorer-rdkit", "Dockerfile"),
+    "utf8",
+  );
+  const modelHash = opensolPinnedFiles.get(opensolModelRelativePath);
+  for (const expected of [
+    `agora.opensol.source-commit="${opensolSourceCommit}"`,
+    `agora.opensol.model-sha256="${modelHash}"`,
+  ]) {
+    if (!dockerfile.includes(expected)) {
+      fail(`RDKit Dockerfile must record OpenSOL provenance label ${expected}.`);
+    }
+  }
+
+  const provenancePath = path.join(rootDir, "agora-scorer-rdkit", "OPENSOL-PROVENANCE.md");
+  if (!fs.existsSync(provenancePath)) {
+    fail("Missing agora-scorer-rdkit/OPENSOL-PROVENANCE.md.");
+  }
+  const provenance = fs.readFileSync(provenancePath, "utf8");
+  for (const expected of [opensolSourceCommit, modelHash, "Prediction -m xgboost -dscr rdkit_2d -s clustering"]) {
+    if (!provenance.includes(expected)) {
+      fail(`OpenSOL provenance must include ${expected}.`);
+    }
   }
 }
 
@@ -159,6 +275,7 @@ for (const name of scorerDirs) {
 }
 
 validateRdkitRequirements();
+validateOpenSolAssets();
 validateCompiledRequirements();
 
 console.log("scorer container guard passed");
