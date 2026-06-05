@@ -113,7 +113,7 @@ Python image. It pins:
 - `rdkit==2025.3.1`
 - `numpy==2.4.4`
 - `Pillow==12.2.0`
-- `xgboost==3.0.5`
+- `xgboost-cpu==3.0.5` (imports as `xgboost==3.0.5`)
 - `pandas==2.3.3`
 - `scipy==1.17.1`
 - `joblib==1.5.3`

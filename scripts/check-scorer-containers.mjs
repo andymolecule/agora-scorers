@@ -19,7 +19,7 @@ const rdkitRequirementsPath = path.join(
   "requirements.txt",
 );
 const disallowedRequirementPattern =
-  /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|sklearn|scikit-learn)\b/i;
+  /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|sklearn|scikit-learn|cuda|nvidia|nccl)\b/i;
 const disallowedCompiledRequirementPattern =
   /\b(scanpy|scvelo|biopython|biotite|dock|jupyter|notebook|torch|tensorflow|opensol|aggrescan|boltz)\b/i;
 const opensolSourceCommit = "89e6d30d0ce84aaf9ee2bd9c93619d3c2a4a95c4";
@@ -173,7 +173,7 @@ function validateRdkitRequirements() {
     "rdkit==2025.3.1",
     "numpy==2.4.4",
     "Pillow==12.2.0",
-    "xgboost==3.0.5",
+    "xgboost-cpu==3.0.5",
     "pandas==2.3.3",
     "scipy==1.17.1",
     "joblib==1.5.3",

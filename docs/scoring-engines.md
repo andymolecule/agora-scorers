@@ -169,8 +169,9 @@ It owns:
 - `rdkit_python_runtime` image build inputs
 - Python 3.11.9 slim base-image digest
 - hash-locked `rdkit==2025.3.1`, `numpy==2.4.4`, `Pillow==12.2.0`,
-  `xgboost==3.0.5`, `pandas==2.3.3`, `scipy==1.17.1`, `joblib==1.5.3`,
-  and pandas transitives
+  `xgboost-cpu==3.0.5` (imports as `xgboost==3.0.5`),
+  `pandas==2.3.3`, `scipy==1.17.1`, `joblib==1.5.3`, and pandas
+  transitives
 - the public OpenSOL XGBoost/RDKit-2D/clustering model from
   `sutropub/OpenSOL@89e6d30d0ce84aaf9ee2bd9c93619d3c2a4a95c4`, pinned at
   SHA-256 `bb0e4c542c8172b717239f62be3d538bf1ede214a385af055411c02f1d928da0`
